@@ -175,6 +175,30 @@ PhysicsDirectBodyState3D::PhysicsDirectBodyState3D() {}
 
 ///////////////////////////////////////////////////////
 
+void PhysicsDirectSoftBodyState3D::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("get_vertices"), &PhysicsDirectSoftBodyState3D::get_vertices);
+	ClassDB::bind_method(D_METHOD("get_aabb"), &PhysicsDirectSoftBodyState3D::get_aabb);
+
+	ADD_PROPERTY(PropertyInfo(Variant::PACKED_VECTOR3_ARRAY, "vertices"), "", "get_vertices");
+	ADD_PROPERTY(PropertyInfo(Variant::AABB, "aabb"), "", "get_aabb");
+}
+
+PackedVector3Array PhysicsDirectSoftBodyState3D::get_vertices() const {
+	PackedVector3Array ret;
+	GDVIRTUAL_CALL(_get_vertices, ret);
+	return ret;
+}
+
+AABB PhysicsDirectSoftBodyState3D::get_aabb() const {
+	AABB ret;
+	GDVIRTUAL_CALL(_get_aabb, ret);
+	return ret;
+}
+
+PhysicsDirectSoftBodyState3D::PhysicsDirectSoftBodyState3D() = default;
+
+///////////////////////////////////////////////////////
+
 void PhysicsRayQueryParameters3D::set_exclude(const TypedArray<RID> &p_exclude) {
 	parameters.exclude.clear();
 	for (int i = 0; i < p_exclude.size(); i++) {
@@ -842,6 +866,7 @@ void PhysicsServer3D::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("soft_body_create"), &PhysicsServer3D::soft_body_create);
 
+	ClassDB::bind_method(D_METHOD("soft_body_set_state_sync_callback", "body", "callable"), &PhysicsServer3D::soft_body_set_state_sync_callback);
 	ClassDB::bind_method(D_METHOD("soft_body_update_rendering_server", "body", "rendering_server_handler"), &PhysicsServer3D::soft_body_update_rendering_server);
 
 	ClassDB::bind_method(D_METHOD("soft_body_set_space", "body", "space"), &PhysicsServer3D::soft_body_set_space);

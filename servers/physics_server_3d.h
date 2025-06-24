@@ -114,6 +114,22 @@ public:
 	PhysicsDirectBodyState3D();
 };
 
+class PhysicsDirectSoftBodyState3D : public Object {
+	GDCLASS(PhysicsDirectSoftBodyState3D, Object);
+
+protected:
+	static void _bind_methods();
+
+	GDVIRTUAL0RC_REQUIRED(PackedVector3Array, _get_vertices)
+	GDVIRTUAL0RC_REQUIRED(AABB, _get_aabb)
+
+public:
+	virtual PackedVector3Array get_vertices() const;
+	virtual AABB get_aabb() const;
+
+	PhysicsDirectSoftBodyState3D();
+};
+
 class PhysicsRayQueryParameters3D;
 class PhysicsPointQueryParameters3D;
 class PhysicsShapeQueryParameters3D;
@@ -572,6 +588,8 @@ public:
 
 	virtual RID soft_body_create() = 0;
 
+	// The Callable object takes a single PhysicsDirectSoftBodyState3D parameter
+	virtual void soft_body_set_state_sync_callback(RID p_body, const Callable &p_callable) = 0;
 	virtual void soft_body_update_rendering_server(RID p_body, PhysicsServer3DRenderingServerHandler *p_rendering_server_handler) = 0;
 
 	virtual void soft_body_set_space(RID p_body, RID p_space) = 0;

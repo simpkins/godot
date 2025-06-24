@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="PhysicsDirectSoftBodyState3D" inherits="Object" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Provides direct read access to a physics soft body data in the [PhysicsServer3D].
+	</brief_description>
+	<description>
+		An instance of this class is passed to the soft body state callback set with [method PhysicsServer3D.soft_body_set_state_sync_callback].  This allows the callback to read the soft body vertices and bounding box after each physics where they have been updated.  Note that this class does not derive from [RefCounted], so a reference to this object may not be stored for later use--this object is only valid for the duration of the state sync callback.
+	</description>
+	<tutorials>
+	</tutorials>
+	<members>
+		<member name="aabb" type="AABB" setter="" getter="get_aabb">
+			The axis-aligned bounding box of the soft body.
+		</member>
+		<member name="vertices" type="PackedVector3Array" setter="" getter="get_vertices">
+			The soft body vertices.
+		</member>
+	</members>
+</class>

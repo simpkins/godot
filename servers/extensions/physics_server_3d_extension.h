@@ -405,6 +405,7 @@ public:
 
 	EXBIND0R(RID, soft_body_create)
 
+	EXBIND2(soft_body_set_state_sync_callback, RID, const Callable &)
 	EXBIND2(soft_body_update_rendering_server, RID, PhysicsServer3DRenderingServerHandler *)
 
 	EXBIND2(soft_body_set_space, RID, RID)

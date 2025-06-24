@@ -300,6 +300,7 @@ public:
 
 	virtual RID soft_body_create() override;
 
+	virtual void soft_body_set_state_sync_callback(RID p_body, const Callable &p_callable) override;
 	virtual void soft_body_update_rendering_server(RID p_body, PhysicsServer3DRenderingServerHandler *p_rendering_server_handler) override;
 
 	virtual void soft_body_set_space(RID p_body, RID p_space) override;

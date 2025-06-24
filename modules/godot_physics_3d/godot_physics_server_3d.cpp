@@ -980,8 +980,7 @@ void GodotPhysicsServer3D::soft_body_set_state_sync_callback(RID p_body, const C
 	GodotSoftBody3D *soft_body = soft_body_owner.get_or_null(p_body);
 	ERR_FAIL_NULL(soft_body);
 
-	// TODO: soft_body->set_state_sync_callback(p_callable);
-	ERR_FAIL_MSG("GodotSoftBody3D::soft_body_set_state_sync_callback() is not yet implemented");
+	soft_body->set_state_sync_callback(p_callable);
 }
 
 void GodotPhysicsServer3D::soft_body_update_rendering_server(RID p_body, PhysicsServer3DRenderingServerHandler *p_rendering_server_handler) {

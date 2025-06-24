@@ -985,6 +985,14 @@ RID JoltPhysicsServer3D::soft_body_create() {
 	return rid;
 }
 
+void JoltPhysicsServer3D::soft_body_set_state_sync_callback(RID p_body, const Callable &p_callable) {
+	JoltSoftBody3D *body = soft_body_owner.get_or_null(p_body);
+	ERR_FAIL_NULL(body);
+
+	// TODO: body->set_state_sync_callback(p_callable);
+	ERR_FAIL_MSG("JoltSoftBody3D::soft_body_set_state_sync_callback() is not yet implemented");
+}
+
 void JoltPhysicsServer3D::soft_body_update_rendering_server(RID p_body, PhysicsServer3DRenderingServerHandler *p_rendering_server_handler) {
 	JoltSoftBody3D *body = soft_body_owner.get_or_null(p_body);
 	ERR_FAIL_NULL(body);

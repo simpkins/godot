@@ -36,6 +36,7 @@
 #include "../misc/jolt_stream_wrappers.h"
 #include "../objects/jolt_area_3d.h"
 #include "../objects/jolt_body_3d.h"
+#include "../objects/jolt_soft_body_3d.h"
 #include "../shapes/jolt_custom_shape_type.h"
 #include "../shapes/jolt_shape_3d.h"
 #include "jolt_contact_listener_3d.h"
@@ -76,11 +77,16 @@ void JoltSpace3D::_pre_step(float p_step) {
 	contact_listener->pre_step();
 
 	const JPH::BodyLockInterface &lock_iface = get_lock_iface();
-	const JPH::BodyID *active_rigid_bodies = physics_system->GetActiveBodiesUnsafe(JPH::EBodyType::RigidBody);
-	const JPH::uint32 active_rigid_body_count = physics_system->GetNumActiveBodies(JPH::EBodyType::RigidBody);
+	_pre_step_bodies(p_step, lock_iface, JPH::EBodyType::RigidBody);
+	_pre_step_bodies(p_step, lock_iface, JPH::EBodyType::SoftBody);
+}
 
-	for (JPH::uint32 i = 0; i < active_rigid_body_count; i++) {
-		JPH::Body *jolt_body = lock_iface.TryGetBody(active_rigid_bodies[i]);
+void JoltSpace3D::_pre_step_bodies(float p_step, const JPH::BodyLockInterface &lock_iface, JPH::EBodyType body_type) {
+	const JPH::BodyID *active_bodies = physics_system->GetActiveBodiesUnsafe(body_type);
+	const JPH::uint32 active_body_count = physics_system->GetNumActiveBodies(body_type);
+
+	for (JPH::uint32 i = 0; i < active_body_count; i++) {
+		JPH::Body *jolt_body = lock_iface.TryGetBody(active_bodies[i]);
 		JoltObject3D *object = reinterpret_cast<JoltObject3D *>(jolt_body->GetUserData());
 		object->pre_step(p_step, *jolt_body);
 	}
@@ -207,18 +213,21 @@ void JoltSpace3D::step(float p_step) {
 	stepping = false;
 }
 
-void JoltSpace3D::call_queries() {
-	while (body_call_queries_list.first()) {
-		JoltBody3D *body = body_call_queries_list.first()->self();
-		body_call_queries_list.remove(body_call_queries_list.first());
-		body->call_queries();
+namespace {
+template <typename T>
+void _invoke_call_queries(typename T &list) {
+	while (list.first()) {
+		auto *element = list.first()->self();
+		list.remove(list.first());
+		element->call_queries();
 	}
+}
+} // namespace
 
-	while (area_call_queries_list.first()) {
-		JoltArea3D *body = area_call_queries_list.first()->self();
-		area_call_queries_list.remove(area_call_queries_list.first());
-		body->call_queries();
-	}
+void JoltSpace3D::call_queries() {
+	_invoke_call_queries(body_call_queries_list);
+	_invoke_call_queries(soft_body_call_queries_list);
+	_invoke_call_queries(area_call_queries_list);
 }
 
 double JoltSpace3D::get_param(PhysicsServer3D::SpaceParameter p_param) const {
@@ -493,6 +502,12 @@ void JoltSpace3D::enqueue_call_queries(SelfList<JoltBody3D> *p_body) {
 	}
 }
 
+void JoltSpace3D::enqueue_call_queries(SelfList<JoltSoftBody3D> *p_body) {
+	if (!p_body->in_list()) {
+		soft_body_call_queries_list.add(p_body);
+	}
+}
+
 void JoltSpace3D::enqueue_call_queries(SelfList<JoltArea3D> *p_area) {
 	if (!p_area->in_list()) {
 		area_call_queries_list.add(p_area);
@@ -502,6 +517,12 @@ void JoltSpace3D::enqueue_call_queries(SelfList<JoltArea3D> *p_area) {
 void JoltSpace3D::dequeue_call_queries(SelfList<JoltBody3D> *p_body) {
 	if (p_body->in_list()) {
 		body_call_queries_list.remove(p_body);
+	}
+}
+
+void JoltSpace3D::dequeue_call_queries(SelfList<JoltSoftBody3D> *p_body) {
+	if (p_body->in_list()) {
+		soft_body_call_queries_list.remove(p_body);
 	}
 }
 

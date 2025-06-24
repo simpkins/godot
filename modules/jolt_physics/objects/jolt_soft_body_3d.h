@@ -40,6 +40,7 @@
 #include "Jolt/Physics/SoftBody/SoftBodySharedSettings.h"
 
 class JoltSpace3D;
+class JoltPhysicsDirectSoftBodyState3D;
 
 class JoltSoftBody3D final : public JoltObject3D {
 	struct Shared {
@@ -59,6 +60,13 @@ class JoltSoftBody3D final : public JoltObject3D {
 	RID mesh;
 
 	JPH::SoftBodyCreationSettings *jolt_settings = new JPH::SoftBodyCreationSettings();
+
+	// callback_vertices is used by _compute_direct_state() to store the vertex
+	// locations to pass to the state_sync_callback.  It is stored as a member
+	// variable solely to avoid re-allocating the vector each frame.
+	PackedVector3Array callback_vertices;
+	Callable state_sync_callback;
+	SelfList<JoltSoftBody3D> call_queries_element{ this };
 
 	float mass = 0.0f;
 	float pressure = 0.0f;
@@ -97,6 +105,11 @@ class JoltSoftBody3D final : public JoltObject3D {
 	void _exceptions_changed();
 	void _motion_changed();
 
+	JoltPhysicsDirectSoftBodyState3D _compute_direct_state();
+
+	void _enqueue_call_queries();
+	void _dequeue_call_queries();
+
 public:
 	JoltSoftBody3D();
 	virtual ~JoltSoftBody3D() override;
@@ -117,6 +130,9 @@ public:
 
 	virtual Vector3 get_velocity_at_position(const Vector3 &p_position) const override;
 
+	bool has_state_sync_callback() const { return state_sync_callback.is_valid(); }
+	void set_state_sync_callback(const Callable &p_callback) { state_sync_callback = p_callback; }
+
 	void set_mesh(const RID &p_mesh);
 
 	bool is_pickable() const { return pickable; }
@@ -130,6 +146,10 @@ public:
 
 	void put_to_sleep() { set_is_sleeping(true); }
 	void wake_up() { set_is_sleeping(false); }
+
+	void call_queries();
+
+	virtual void pre_step(float p_step, JPH::Body &p_jolt_body) override;
 
 	int get_simulation_precision() const { return simulation_precision; }
 	void set_simulation_precision(int p_precision);

@@ -56,6 +56,7 @@ class JoltSpace3D {
 	Mutex pending_objects_mutex;
 
 	SelfList<JoltBody3D>::List body_call_queries_list;
+	SelfList<JoltSoftBody3D>::List soft_body_call_queries_list;
 	SelfList<JoltArea3D>::List area_call_queries_list;
 	SelfList<JoltShapedObject3D>::List shapes_changed_list;
 	SelfList<JoltShapedObject3D>::List needs_optimization_list;
@@ -79,6 +80,7 @@ class JoltSpace3D {
 	bool stepping = false;
 
 	void _pre_step(float p_step);
+	void _pre_step_bodies(float p_step, const JPH::BodyLockInterface &lock_iface, JPH::EBodyType body_type);
 	void _post_step(float p_step);
 
 public:
@@ -136,8 +138,10 @@ public:
 	void set_is_object_sleeping(const JPH::BodyID &p_jolt_id, bool p_enable);
 
 	void enqueue_call_queries(SelfList<JoltBody3D> *p_body);
+	void enqueue_call_queries(SelfList<JoltSoftBody3D> *p_body);
 	void enqueue_call_queries(SelfList<JoltArea3D> *p_area);
 	void dequeue_call_queries(SelfList<JoltBody3D> *p_body);
+	void dequeue_call_queries(SelfList<JoltSoftBody3D> *p_body);
 	void dequeue_call_queries(SelfList<JoltArea3D> *p_area);
 
 	void enqueue_shapes_changed(SelfList<JoltShapedObject3D> *p_object);

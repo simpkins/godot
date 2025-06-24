@@ -37,6 +37,7 @@
 #include "jolt_area_3d.h"
 #include "jolt_body_3d.h"
 #include "jolt_group_filter.h"
+#include "jolt_physics_direct_soft_body_state_3d.h"
 
 #include "servers/rendering_server.h"
 
@@ -81,6 +82,7 @@ void JoltSoftBody3D::_space_changing() {
 	}
 
 	_deref_shared_data();
+	_dequeue_call_queries();
 }
 
 void JoltSoftBody3D::_space_changed() {
@@ -473,6 +475,48 @@ void JoltSoftBody3D::set_is_sleep_allowed(bool p_enabled) {
 	}
 }
 
+void JoltSoftBody3D::call_queries() {
+	// Note: unlike most other methods, call_queries() will be invoked on the main thread
+	// rather than the physics thread. However, we are guaranteed that the physics thread
+	// is inactive, between physics steps. (This call is invoked between the physics
+	// server sync() and end_sync() calls.)
+	if (state_sync_callback.is_valid()) {
+		JoltPhysicsDirectSoftBodyState3D direct_state = _compute_direct_state();
+		const Variant direct_state_variant = &direct_state;
+		const Variant *args[1] = { &direct_state_variant };
+		const int argc = 1;
+
+		Callable::CallError ce;
+		Variant ret;
+		state_sync_callback.callp(args, argc, ret, ce);
+		if (unlikely(ce.error != Callable::CallError::CALL_OK)) {
+			ERR_PRINT_ONCE(vformat(
+					"Failed to call soft body state sync callback for '%s'. It returned the following error: '%s'.",
+					to_string(), Variant::get_callable_error_text(state_sync_callback, args, argc, ce)));
+		}
+	}
+}
+
+void JoltSoftBody3D::pre_step(float p_step, JPH::Body &p_jolt_body) {
+	JoltObject3D::pre_step(p_step, p_jolt_body);
+
+	if (state_sync_callback.is_valid()) {
+		_enqueue_call_queries();
+	}
+}
+
+void JoltSoftBody3D::_enqueue_call_queries() {
+	if (space != nullptr) {
+		space->enqueue_call_queries(&call_queries_element);
+	}
+}
+
+void JoltSoftBody3D::_dequeue_call_queries() {
+	if (space != nullptr) {
+		space->dequeue_call_queries(&call_queries_element);
+	}
+}
+
 void JoltSoftBody3D::set_simulation_precision(int p_precision) {
 	if (unlikely(simulation_precision == p_precision)) {
 		return;
@@ -677,6 +721,28 @@ void JoltSoftBody3D::update_rendering_server(PhysicsServer3DRenderingServerHandl
 	}
 
 	p_rendering_server_handler->set_aabb(get_bounds());
+}
+
+JoltPhysicsDirectSoftBodyState3D JoltSoftBody3D::_compute_direct_state() {
+	if (unlikely(!in_space())) {
+		ERR_PRINT_ONCE("JoltSoftBody3D: attempted to get direct state while not active in a space");
+		return JoltPhysicsDirectSoftBodyState3D();
+	}
+
+	const JPH::SoftBodyMotionProperties &motion_properties = static_cast<const JPH::SoftBodyMotionProperties &>(*jolt_body->GetMotionPropertiesUnchecked());
+	typedef JPH::SoftBodyMotionProperties::Vertex SoftBodyVertex;
+	const JPH::Array<SoftBodyVertex> &physics_vertices = motion_properties.GetVertices();
+
+	const int mesh_vertex_count = shared->mesh_to_physics.size();
+
+	render_vertices.resize(mesh_vertex_count);
+	Vector3 *rvp = render_vertices.ptrw();
+	for (int i = 0; i < mesh_vertex_count; ++i) {
+		const int physics_index = shared->mesh_to_physics[i];
+		rvp[i] = to_godot(physics_vertices[(size_t)physics_index].mPosition);
+	}
+
+	return JoltPhysicsDirectSoftBodyState3D(render_vertices, get_bounds());
 }
 
 Vector3 JoltSoftBody3D::get_vertex_position(int p_index) {

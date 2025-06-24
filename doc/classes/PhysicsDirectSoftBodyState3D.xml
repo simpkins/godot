@@ -9,10 +9,10 @@
 	<tutorials>
 	</tutorials>
 	<members>
-		<member name="aabb" type="AABB" setter="" getter="get_aabb">
+		<member name="aabb" type="AABB" setter="" getter="get_aabb" default="AABB(0, 0, 0, 0, 0, 0)">
 			The axis-aligned bounding box of the soft body.
 		</member>
-		<member name="vertices" type="PackedVector3Array" setter="" getter="get_vertices">
+		<member name="vertices" type="PackedVector3Array" setter="" getter="get_vertices" default="PackedVector3Array()">
 			The soft body vertices.
 		</member>
 	</members>

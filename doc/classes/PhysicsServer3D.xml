@@ -1335,6 +1335,17 @@
 				[b]Note:[/b] Godot's default physics implementation does not support [constant BODY_STATE_LINEAR_VELOCITY], [constant BODY_STATE_ANGULAR_VELOCITY], [constant BODY_STATE_SLEEPING], or [constant BODY_STATE_CAN_SLEEP].
 			</description>
 		</method>
+		<method name="soft_body_set_state_sync_callback">
+			<return type="void" />
+			<param index="0" name="body" type="RID" />
+			<param index="1" name="callable" type="Callable" />
+			<description>
+				Sets the soft body's state synchronization callback function to [param callable]. Use an empty [Callable] ([code skip-lint]Callable()[/code]) to clear the callback.
+				The function [param callable] will be called every physics frame, assuming that the body was active during the previous physics tick, and can be used to fetch the latest state from the physics server.
+				The function [param callable] must take the following parameters:
+				1. [code]state[/code]: a [PhysicsDirectSoftBodyState3D], used to retrieve the body's state.
+			</description>
+		</method>
 		<method name="soft_body_set_total_mass">
 			<return type="void" />
 			<param index="0" name="body" type="RID" />

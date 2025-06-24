@@ -1,5 +1,5 @@
 /**************************************************************************/
-/*  register_types.cpp                                                    */
+/*  godot_physics_direct_soft_body_state_3d.h                             */
 /**************************************************************************/
 /*                         This file is part of:                          */
 /*                             GODOT ENGINE                               */
@@ -28,36 +28,27 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
-#include "register_types.h"
+#pragma once
 
-#include "godot_physics_direct_soft_body_state_3d.h"
-#include "godot_physics_server_3d.h"
 #include "servers/physics_server_3d.h"
-#include "servers/physics_server_3d_wrap_mt.h"
 
-static PhysicsServer3D *_createGodotPhysics3DCallback() {
-#ifdef THREADS_ENABLED
-	bool using_threads = GLOBAL_GET("physics/3d/run_on_separate_thread");
-#else
-	bool using_threads = false;
-#endif
+class GodotBody3D;
 
-	PhysicsServer3D *physics_server_3d = memnew(GodotPhysicsServer3D(using_threads));
+class GodotPhysicsDirectSoftBodyState3D : public PhysicsDirectSoftBodyState3D {
+	GDCLASS(GodotPhysicsDirectSoftBodyState3D, PhysicsDirectSoftBodyState3D);
 
-	return memnew(PhysicsServer3DWrapMT(physics_server_3d, using_threads));
-}
+	PackedVector3Array vertices;
+	AABB aabb;
 
-void initialize_godot_physics_3d_module(ModuleInitializationLevel p_level) {
-	if (p_level != MODULE_INITIALIZATION_LEVEL_SERVERS) {
-		return;
-	}
-	ClassDB::register_class<GodotPhysicsDirectSoftBodyState3D>();
-	PhysicsServer3DManager::get_singleton()->register_server("GodotPhysics3D", callable_mp_static(_createGodotPhysics3DCallback));
-	PhysicsServer3DManager::get_singleton()->set_default_server("GodotPhysics3D");
-}
+protected:
+	static void _bind_methods() {}
 
-void uninitialize_godot_physics_3d_module(ModuleInitializationLevel p_level) {
-	if (p_level != MODULE_INITIALIZATION_LEVEL_SERVERS) {
-		return;
-	}
-}
+public:
+	GodotPhysicsDirectSoftBodyState3D() = default;
+
+	explicit GodotPhysicsDirectSoftBodyState3D(PackedVector3Array p_vertices, const AABB &p_aabb) :
+			vertices(std::move(p_vertices)), aabb(p_aabb) {}
+
+	virtual PackedVector3Array get_vertices() const override;
+	virtual AABB get_aabb() const override;
+};

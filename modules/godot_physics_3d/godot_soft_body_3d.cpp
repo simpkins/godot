@@ -30,6 +30,7 @@
 
 #include "godot_soft_body_3d.h"
 
+#include "godot_physics_direct_soft_body_state_3d.h"
 #include "godot_space_3d.h"
 
 #include "core/math/geometry_3d.h"
@@ -107,6 +108,10 @@ Variant GodotSoftBody3D::get_state(PhysicsServer3D::BodyState p_state) const {
 	}
 
 	return Variant();
+}
+
+void GodotSoftBody3D::set_state_sync_callback(const Callable &p_callable) {
+	body_state_callback = p_callable;
 }
 
 void GodotSoftBody3D::set_space(GodotSpace3D *p_space) {
@@ -1098,6 +1103,10 @@ void GodotSoftBody3D::predict_motion(real_t p_delta) {
 }
 
 void GodotSoftBody3D::solve_constraints(real_t p_delta) {
+	if (body_state_callback.is_valid()) {
+		get_space()->soft_body_add_to_state_query_list(&direct_state_query_list);
+	}
+
 	const real_t inv_delta = 1.0 / p_delta;
 
 	for (Link &link : links) {
@@ -1184,6 +1193,21 @@ void GodotSoftBody3D::query_ray(const Vector3 &p_from, const Vector3 &p_to, Godo
 	query_result.userdata = p_userdata;
 
 	face_tree.ray_query(p_from, p_to, query_result);
+}
+
+void GodotSoftBody3D::call_queries() {
+	if (body_state_callback.is_valid()) {
+		const uint32_t vertex_count = map_visual_to_physics.size();
+		callback_vertices.resize(vertex_count);
+		Vector3 *v = callback_vertices.ptrw();
+		for (uint32_t i = 0; i < vertex_count; ++i) {
+			const uint32_t node_index = map_visual_to_physics[i];
+			v[i] = nodes[node_index].x;
+		}
+
+		GodotPhysicsDirectSoftBodyState3D direct_state(callback_vertices, bounds);
+		body_state_callback.call(&direct_state);
+	}
 }
 
 void GodotSoftBody3D::initialize_face_tree() {

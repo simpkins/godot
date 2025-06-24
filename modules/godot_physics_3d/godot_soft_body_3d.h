@@ -41,6 +41,7 @@
 #include "core/templates/vset.h"
 
 class GodotConstraint3D;
+class GodotPhysicsDirectSoftBodyState3D;
 
 class GodotSoftBody3D : public GodotCollisionObject3D {
 	RID soft_mesh;
@@ -111,6 +112,12 @@ class GodotSoftBody3D : public GodotCollisionObject3D {
 
 	uint64_t island_step = 0;
 
+	// callback_vertices is used for body_state_callback, and is stored as a member
+	// variable solely to avoid reallocating space for this data each frame.
+	PackedVector3Array callback_vertices;
+	Callable body_state_callback;
+	SelfList<GodotSoftBody3D> direct_state_query_list{ this };
+
 	_FORCE_INLINE_ Vector3 _compute_area_windforce(const GodotArea3D *p_area, const Face *p_face);
 
 public:
@@ -120,6 +127,8 @@ public:
 
 	void set_state(PhysicsServer3D::BodyState p_state, const Variant &p_variant);
 	Variant get_state(PhysicsServer3D::BodyState p_state) const;
+
+	void set_state_sync_callback(const Callable &p_callable);
 
 	_FORCE_INLINE_ void add_constraint(GodotConstraint3D *p_constraint) { constraints.insert(p_constraint); }
 	_FORCE_INLINE_ void remove_constraint(GodotConstraint3D *p_constraint) { constraints.erase(p_constraint); }
@@ -219,6 +228,8 @@ public:
 
 	void query_aabb(const AABB &p_aabb, QueryResultCallback p_result_callback, void *p_userdata);
 	void query_ray(const Vector3 &p_from, const Vector3 &p_to, QueryResultCallback p_result_callback, void *p_userdata);
+
+	void call_queries();
 
 protected:
 	virtual void _shapes_changed() override;

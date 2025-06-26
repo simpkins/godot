@@ -41,6 +41,7 @@
 
 class JoltSpace3D;
 class JoltPhysicsDirectSoftBodyState3D;
+class JoltSoftBody3DSettings;
 
 class JoltSoftBody3D final : public JoltObject3D {
 	struct Shared {
@@ -56,6 +57,7 @@ class JoltSoftBody3D final : public JoltObject3D {
 	LocalVector<Vector3> normals;
 
 	const Shared *shared = nullptr;
+	JPH::Ref<JPH::SoftBodySharedSettings> settings;
 
 	RID mesh;
 
@@ -81,6 +83,8 @@ class JoltSoftBody3D final : public JoltObject3D {
 
 	virtual void _add_to_space() override;
 
+	bool _get_physics_index(int p_index, size_t &r_index) const;
+
 	bool _ref_shared_data();
 	void _deref_shared_data();
 
@@ -92,7 +96,6 @@ class JoltSoftBody3D final : public JoltObject3D {
 
 	void _try_rebuild();
 
-	void _mesh_changed();
 	void _simulation_precision_changed();
 	void _mass_changed();
 	void _pressure_changed();
@@ -131,6 +134,7 @@ public:
 	void set_state_sync_callback(const Callable &p_callback) { state_sync_callback = p_callback; }
 
 	void set_mesh(const RID &p_mesh);
+	void set_settings(const JPH::Ref<JPH::SoftBodySharedSettings> &p_settings);
 
 	bool is_pickable() const { return pickable; }
 	void set_pickable(bool p_enabled) { pickable = p_enabled; }

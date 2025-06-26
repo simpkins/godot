@@ -39,6 +39,7 @@ class JoltJobSystem;
 class JoltJoint3D;
 class JoltShape3D;
 class JoltSoftBody3D;
+class JoltSoftBody3DSettings;
 class JoltSpace3D;
 
 class JoltPhysicsServer3D final : public PhysicsServer3D {
@@ -50,6 +51,7 @@ class JoltPhysicsServer3D final : public PhysicsServer3D {
 	mutable RID_PtrOwner<JoltArea3D, true> area_owner;
 	mutable RID_PtrOwner<JoltBody3D, true> body_owner{ 65536, 1048576 };
 	mutable RID_PtrOwner<JoltSoftBody3D, true> soft_body_owner;
+	mutable RID_PtrOwner<JoltSoftBody3DSettings, true> soft_body_settings_owner;
 	mutable RID_PtrOwner<JoltShape3D, true> shape_owner;
 	mutable RID_PtrOwner<JoltJoint3D, true> joint_owner;
 
@@ -439,6 +441,7 @@ public:
 	void free_area(JoltArea3D *p_area);
 	void free_body(JoltBody3D *p_body);
 	void free_soft_body(JoltSoftBody3D *p_body);
+	void free_soft_body_settings(JoltSoftBody3DSettings *p_settings, RID p_rid);
 	void free_shape(JoltShape3D *p_shape);
 	void free_joint(JoltJoint3D *p_joint);
 

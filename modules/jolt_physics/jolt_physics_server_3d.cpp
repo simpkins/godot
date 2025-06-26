@@ -39,6 +39,7 @@
 #include "objects/jolt_area_3d.h"
 #include "objects/jolt_body_3d.h"
 #include "objects/jolt_soft_body_3d.h"
+#include "objects/jolt_soft_body_3d_settings.h"
 #include "servers/physics_server_3d_wrap_mt.h"
 #include "shapes/jolt_box_shape_3d.h"
 #include "shapes/jolt_capsule_shape_3d.h"
@@ -1034,13 +1035,24 @@ void JoltPhysicsServer3D::soft_body_set_mesh(RID p_body, RID p_mesh) {
 }
 
 RID JoltPhysicsServer3D::soft_body_settings_create(const SoftBody3DSettings *p_settings) {
-	// TODO
-	ERR_FAIL_V_MSG(RID(), "soft_body_settings_create() is not yet implemented for Jolt physics");
+	JoltSoftBody3DSettings *settings = memnew(JoltSoftBody3DSettings);
+	RID rid = soft_body_settings_owner.make_rid(settings);
+	settings->initialize(*p_settings);
+	return rid;
 }
 
 void JoltPhysicsServer3D::soft_body_set_settings(RID p_body, RID p_settings) {
-	// TODO
-	ERR_FAIL_MSG("soft_body_set_settings() is not yet implemented for Jolt physics");
+	JoltSoftBody3D *body = soft_body_owner.get_or_null(p_body);
+	ERR_FAIL_NULL(body);
+
+	if (p_settings.is_valid()) {
+		const JoltSoftBody3DSettings *settings = soft_body_settings_owner.get_or_null(p_settings);
+		ERR_FAIL_NULL(settings);
+
+		body->set_settings(settings->get_settings());
+	} else {
+		body->set_settings(nullptr);
+	}
 }
 
 AABB JoltPhysicsServer3D::soft_body_get_bounds(RID p_body) const {
@@ -1608,6 +1620,8 @@ void JoltPhysicsServer3D::free(RID p_rid) {
 		free_area(area);
 	} else if (JoltSoftBody3D *soft_body = soft_body_owner.get_or_null(p_rid)) {
 		free_soft_body(soft_body);
+	} else if (JoltSoftBody3DSettings *soft_body_settings = soft_body_settings_owner.get_or_null(p_rid)) {
+		free_soft_body_settings(soft_body_settings, p_rid);
 	} else if (JoltSpace3D *space = space_owner.get_or_null(p_rid)) {
 		free_space(space);
 	} else {
@@ -1709,6 +1723,13 @@ void JoltPhysicsServer3D::free_soft_body(JoltSoftBody3D *p_body) {
 	p_body->set_space(nullptr);
 	soft_body_owner.free(p_body->get_rid());
 	memdelete(p_body);
+}
+
+void JoltPhysicsServer3D::free_soft_body_settings(JoltSoftBody3DSettings *p_settings, RID p_rid) {
+	ERR_FAIL_NULL(p_settings);
+
+	soft_body_settings_owner.free(p_rid);
+	memdelete(p_settings);
 }
 
 void JoltPhysicsServer3D::free_shape(JoltShape3D *p_shape) {

@@ -309,6 +309,9 @@ public:
 
 	virtual void soft_body_set_mesh(RID p_body, RID p_mesh) override;
 
+	virtual RID soft_body_settings_create(const SoftBody3DSettings *p_settings) override;
+	virtual void soft_body_set_settings(RID p_body, RID p_settings) override;
+
 	virtual AABB soft_body_get_bounds(RID p_body) const override;
 
 	virtual void soft_body_move_point(RID p_body, int p_point_index, const Vector3 &p_global_position) override;

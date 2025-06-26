@@ -324,6 +324,9 @@ public:
 
 	FUNC2(soft_body_set_mesh, RID, RID);
 
+	virtual RID soft_body_settings_create(const SoftBody3DSettings *p_settings) override;
+	FUNC2(soft_body_set_settings, RID, RID);
+
 	FUNC1RC(AABB, soft_body_get_bounds, RID);
 
 	FUNC3(soft_body_move_point, RID, int, const Vector3 &);

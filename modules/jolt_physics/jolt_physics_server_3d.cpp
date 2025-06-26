@@ -1033,6 +1033,16 @@ void JoltPhysicsServer3D::soft_body_set_mesh(RID p_body, RID p_mesh) {
 	body->set_mesh(p_mesh);
 }
 
+RID JoltPhysicsServer3D::soft_body_settings_create(const SoftBody3DSettings *p_settings) {
+	// TODO
+	ERR_FAIL_V_MSG(RID(), "soft_body_settings_create() is not yet implemented for Jolt physics");
+}
+
+void JoltPhysicsServer3D::soft_body_set_settings(RID p_body, RID p_settings) {
+	// TODO
+	ERR_FAIL_MSG("soft_body_set_settings() is not yet implemented for Jolt physics");
+}
+
 AABB JoltPhysicsServer3D::soft_body_get_bounds(RID p_body) const {
 	const JoltSoftBody3D *body = soft_body_owner.get_or_null(p_body);
 	ERR_FAIL_NULL_V(body, AABB());

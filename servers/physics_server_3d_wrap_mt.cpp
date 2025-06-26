@@ -100,6 +100,13 @@ void PhysicsServer3DWrapMT::finish() {
 	}
 }
 
+RID PhysicsServer3DWrapMT::soft_body_settings_create(const SoftBody3DSettings *p_settings) {
+	// soft_body_settings_create() runs directly in the calling thread, just like
+	// other *_create() functions.  Implementations should capture a snapshot of the
+	// SoftBody3DSettings in their current state when this function is called.
+	return physics_server_3d->soft_body_settings_create(p_settings);
+}
+
 PhysicsServer3DWrapMT::PhysicsServer3DWrapMT(PhysicsServer3D *p_contained, bool p_create_thread) {
 	physics_server_3d = p_contained;
 	create_thread = p_create_thread;

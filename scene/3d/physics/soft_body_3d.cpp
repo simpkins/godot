@@ -35,7 +35,7 @@
 
 SoftBody3D::BufferData::BufferData() = default;
 
-void SoftBody3D::BufferData::prepare(RID p_mesh, int p_surface) {
+void SoftBody3D::BufferData::prepare(RID p_mesh, int p_surface, const PackedVector3Array &p_vertices, const PackedInt32Array &p_face_indices) {
 	clear();
 
 	ERR_FAIL_COND(!p_mesh.is_valid());
@@ -61,6 +61,39 @@ void SoftBody3D::BufferData::prepare(RID p_mesh, int p_surface) {
 
 	buffer_curr = &buffer[0];
 	buffer_prev = &buffer[1];
+
+	face_indices = p_face_indices;
+	compute_physics_vertex_mapping(p_vertices);
+}
+
+void SoftBody3D::BufferData::compute_physics_vertex_mapping(const PackedVector3Array &p_vertices) {
+	const int render_vertex_count = p_vertices.size();
+	HashMap<Vector3, int> vertex_by_coords;
+	mesh_to_physics.resize(render_vertex_count);
+
+	// Collapse mesh vertices in the same coordinates to a single physics vertex.
+	// The physics servers currently do the same thing.  In the future it would be nice to only do this logic in one
+	// place, and only tell the physics servers about the physics vertices, rather than making the physics servers also
+	// do this logic.  See https://github.com/godotengine/godot-proposals/issues/12670a
+	//
+	// Note that it doesn't actually matter if our physics indices match the ones
+	// chosen internally by the physics server.  We are using these values only for
+	// ourself to compute normals for shading.
+	const Vector3 *const render_vertices = p_vertices.ptr();
+	for (int render_index = 0; render_index < render_vertex_count; ++render_index) {
+		const Vector3 &render_vertex = render_vertices[render_index];
+		HashMap<Vector3, int>::Iterator iter = vertex_by_coords.find(render_vertex);
+		int physics_index = 0;
+		if (iter == vertex_by_coords.end()) {
+			physics_index = vertex_by_coords.size();
+			vertex_by_coords.insert(render_vertex, physics_index);
+		} else {
+			physics_index = iter->value;
+		}
+		mesh_to_physics[render_index] = physics_index;
+	}
+
+	physics_vertex_count = vertex_by_coords.size();
 }
 
 void SoftBody3D::BufferData::clear() {
@@ -102,6 +135,7 @@ void SoftBody3D::BufferData::commit_changes(real_t p_interpolation_fraction) {
 	real_t f = p_interpolation_fraction;
 	AABB aabb_interp = aabb_curr;
 
+	Vector<uint8_t> &active_buffer = p_interpolation_fraction < 1 ? buffer_interp : *buffer_curr;
 	if (p_interpolation_fraction < 1) {
 		if (buffer_interp.is_empty()) {
 			buffer_interp.resize(buffer_curr->size());
@@ -116,11 +150,11 @@ void SoftBody3D::BufferData::commit_changes(real_t p_interpolation_fraction) {
 		const float *vertex_curr = reinterpret_cast<const float *>(buffer_curr->ptr() + offset_vertices);
 		float *vertex_interp = reinterpret_cast<float *>(buffer_interp.ptrw() + offset_vertices);
 
+		uint32_t stride_units = stride / sizeof(float);
+
 		const uint32_t *normal_prev = reinterpret_cast<const uint32_t *>(buffer_prev->ptr() + offset_normal);
 		const uint32_t *normal_curr = reinterpret_cast<const uint32_t *>(buffer_curr->ptr() + offset_normal);
 		uint32_t *normal_interp = reinterpret_cast<uint32_t *>(buffer_interp.ptrw() + offset_normal);
-
-		uint32_t stride_units = stride / sizeof(float);
 		uint32_t normal_stride_units = normal_stride / sizeof(uint32_t);
 
 		for (uint32_t i = 0; i < vertex_count; i++) {
@@ -146,13 +180,93 @@ void SoftBody3D::BufferData::commit_changes(real_t p_interpolation_fraction) {
 			normal_curr += normal_stride_units;
 			normal_interp += normal_stride_units;
 		}
+	} else {
+		_recompute_normals(active_buffer);
 	}
 
 	if (aabb_interp != aabb_last) {
 		RS::get_singleton()->mesh_set_custom_aabb(mesh, aabb_interp);
 		aabb_last = aabb_interp;
 	}
-	RS::get_singleton()->mesh_surface_update_vertex_region(mesh, surface, 0, p_interpolation_fraction < 1 ? buffer_interp : *buffer_curr);
+	RS::get_singleton()->mesh_surface_update_vertex_region(mesh, surface, 0, active_buffer);
+}
+
+void SoftBody3D::BufferData::_recompute_normals(Vector<uint8_t> &p_buffer) {
+	const bool smooth_shading = shading_mode == SoftBody3D::SHADING_SMOOTH;
+	const int normal_buffer_size = smooth_shading ? physics_vertex_count : vertex_count;
+	normal_compute_buffer.clear();
+	normal_compute_buffer.resize(normal_buffer_size);
+
+	uint8_t *const buffer_ptr = p_buffer.ptrw();
+	const uint8_t *const vertex_buffer = buffer_ptr + offset_vertices;
+	auto get_vertex = [&](int vidx) {
+		const uint8_t *vertex_data = vertex_buffer + vidx * stride;
+		Vector3 result;
+		// Use memcpy here, since it is technically undefined behavior to access
+		// a char buffer via a float* pointer.  (Only the reverse is allowed--any
+		// data type can be accessed via a char* pointer, but not the other
+		// way around.)  In practice most compilers are smart enough to optimize
+		// this memcpy() to a simple read instructions.
+		memcpy(&result.coord, vertex_data, sizeof(result.coord));
+		return result;
+	};
+
+	// Compute vertex normals.
+	//
+	// Smooth shading:
+	// - Each vertex gets the average normal from all physics faces it is connected to.
+	// Flat shading
+	// - Each vertex gets the average normal from all render faces it is connected to.
+	//
+	// Iterate over each face, and add the face normal to each of the face vertices.
+	int num_face_indices = face_indices.size();
+	for (int fidx = 0; fidx + 2 < num_face_indices; fidx += 3) {
+		int v0_idx = face_indices[fidx];
+		int v1_idx = face_indices[fidx + 1];
+		int v2_idx = face_indices[fidx + 2];
+
+		Vector3 v0 = get_vertex(v0_idx);
+		Vector3 v1 = get_vertex(v1_idx);
+		Vector3 v2 = get_vertex(v2_idx);
+		const Vector3 face_normal = (v2 - v0).cross(v1 - v0).normalized();
+
+		// When using smooth shading, normal_compute_buffer is using physics vertex indices.
+		if (smooth_shading) {
+			v0_idx = mesh_to_physics[v0_idx];
+			v1_idx = mesh_to_physics[v1_idx];
+			v2_idx = mesh_to_physics[v2_idx];
+		}
+
+		normal_compute_buffer[v0_idx] += face_normal;
+		normal_compute_buffer[v1_idx] += face_normal;
+		normal_compute_buffer[v2_idx] += face_normal;
+	}
+	// Normalize the vertex normals to have length 1.0
+	for (Vector3 &n : normal_compute_buffer) {
+		real_t len = n.length();
+		// Some normals may have length 0 if the face was degenerate,
+		// so don't divide by zero.
+		if (len > CMP_EPSILON) {
+			n /= len;
+		}
+	}
+
+	// Now assign each mesh vertex the normal computed
+	// from its physics vertex
+	uint8_t *normal_buffer = buffer_ptr + offset_normal;
+	for (uint32_t mesh_idx = 0; mesh_idx < vertex_count; ++mesh_idx, normal_buffer += normal_stride) {
+		uint32_t normal_idx = smooth_shading ? mesh_to_physics[mesh_idx] : mesh_idx;
+		Vector2 encoded = normal_compute_buffer[normal_idx].octahedron_encode();
+		uint32_t value = 0;
+		value |= (uint16_t)CLAMP(encoded.x * 65535, 0, 65535);
+		value |= (uint16_t)CLAMP(encoded.y * 65535, 0, 65535) << 16;
+		memcpy(normal_buffer, &value, sizeof(uint32_t));
+	}
+}
+
+void SoftBody3D::BufferData::recompute_normals() {
+	_recompute_normals(*buffer_curr);
+	RS::get_singleton()->mesh_surface_update_vertex_region(mesh, surface, 0, *buffer_curr);
 }
 
 void SoftBody3D::BufferData::set_vertex(int p_vertex_id, const Vector3 &p_vertex) {
@@ -163,15 +277,22 @@ void SoftBody3D::BufferData::set_vertex(int p_vertex_id, const Vector3 &p_vertex
 }
 
 void SoftBody3D::BufferData::set_normal(int p_vertex_id, const Vector3 &p_normal) {
-	Vector2 res = p_normal.octahedron_encode();
-	uint32_t value = 0;
-	value |= (uint16_t)CLAMP(res.x * 65535, 0, 65535);
-	value |= (uint16_t)CLAMP(res.y * 65535, 0, 65535) << 16;
-	memcpy(&write_buffer[p_vertex_id * normal_stride + offset_normal], &value, sizeof(uint32_t));
+	// We don't do anything here.  Eventually the goal is to deprecate normal calculation in the physics server.
 }
 
 void SoftBody3D::BufferData::set_aabb(const AABB &p_aabb) {
 	aabb_curr = p_aabb;
+}
+
+SoftBody3D::ShadingMode SoftBody3D::BufferData::get_shading_mode() const {
+	return shading_mode;
+}
+
+void SoftBody3D::BufferData::set_shading_mode(ShadingMode p_mode) {
+	shading_mode = p_mode;
+	if (has_mesh()) {
+		recompute_normals();
+	}
 }
 
 SoftBody3D::PinnedPoint::PinnedPoint() {
@@ -414,6 +535,9 @@ void SoftBody3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_disable_mode", "mode"), &SoftBody3D::set_disable_mode);
 	ClassDB::bind_method(D_METHOD("get_disable_mode"), &SoftBody3D::get_disable_mode);
 
+	ClassDB::bind_method(D_METHOD("set_shading_mode", "mode"), &SoftBody3D::set_shading_mode);
+	ClassDB::bind_method(D_METHOD("get_shading_mode"), &SoftBody3D::get_shading_mode);
+
 	ClassDB::bind_method(D_METHOD("get_collision_exceptions"), &SoftBody3D::get_collision_exceptions);
 	ClassDB::bind_method(D_METHOD("add_collision_exception_with", "body"), &SoftBody3D::add_collision_exception_with);
 	ClassDB::bind_method(D_METHOD("remove_collision_exception_with", "body"), &SoftBody3D::remove_collision_exception_with);
@@ -468,9 +592,12 @@ void SoftBody3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "ray_pickable"), "set_ray_pickable", "is_ray_pickable");
 
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "disable_mode", PROPERTY_HINT_ENUM, "Remove,KeepActive"), "set_disable_mode", "get_disable_mode");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "shading_mode", PROPERTY_HINT_ENUM, "Smooth,Flat"), "set_shading_mode", "get_shading_mode");
 
 	BIND_ENUM_CONSTANT(DISABLE_MODE_REMOVE);
 	BIND_ENUM_CONSTANT(DISABLE_MODE_KEEP_ACTIVE);
+	BIND_ENUM_CONSTANT(SHADING_FLAT);
+	BIND_ENUM_CONSTANT(SHADING_SMOOTH);
 }
 
 void SoftBody3D::_physics_interpolated_changed() {
@@ -614,7 +741,8 @@ void SoftBody3D::_convert_mesh(const Ref<Mesh> &p_mesh) {
 	soft_mesh->surface_set_material(0, p_mesh->surface_get_material(0));
 
 	RID soft_mesh_rid = soft_mesh->get_rid();
-	buffer_data.prepare(soft_mesh_rid, 0);
+	buffer_data.prepare(soft_mesh_rid, 0, surface_arrays[Mesh::ARRAY_VERTEX], surface_arrays[Mesh::ARRAY_INDEX]);
+	buffer_data.recompute_normals();
 	MeshInstance3D::set_mesh(soft_mesh);
 	if (simulation_active) {
 		PhysicsServer3D::get_singleton()->soft_body_set_mesh(physics_rid, soft_mesh_rid);
@@ -714,6 +842,14 @@ void SoftBody3D::set_disable_mode(DisableMode p_mode) {
 
 SoftBody3D::DisableMode SoftBody3D::get_disable_mode() const {
 	return disable_mode;
+}
+
+void SoftBody3D::set_shading_mode(ShadingMode p_mode) {
+	buffer_data.set_shading_mode(p_mode);
+}
+
+SoftBody3D::ShadingMode SoftBody3D::get_shading_mode() const {
+	return buffer_data.get_shading_mode();
 }
 
 void SoftBody3D::set_parent_collision_ignore(const NodePath &p_parent_collision_ignore) {

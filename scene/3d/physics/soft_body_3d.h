@@ -44,6 +44,11 @@ public:
 		DISABLE_MODE_KEEP_ACTIVE,
 	};
 
+	enum ShadingMode {
+		SHADING_SMOOTH,
+		SHADING_FLAT,
+	};
+
 	struct PinnedPoint {
 		int point_index = -1;
 		NodePath spatial_attachment_path;
@@ -76,18 +81,37 @@ private:
 
 		uint8_t *write_buffer = nullptr;
 
+		ShadingMode shading_mode = SoftBody3D::SHADING_SMOOTH;
+
+		// A mapping from the render mesh's vertex indices
+		// to physics vertex indices.
+		LocalVector<int> mesh_to_physics;
+		// A vector to use for temporarily storing vertex normals in recompute_normals() while
+		// we average normals. We store this as a member variable simply to avoid having to
+		// re-allocate it each frame.
+		LocalVector<Vector3> normal_compute_buffer;
+		uint32_t physics_vertex_count = 0;
+		PackedInt32Array face_indices;
+
+		void _recompute_normals(Vector<uint8_t> &p_buffer);
+
 	public:
 		BufferData();
-		void prepare(RID p_mesh_rid, int p_surface);
+		void prepare(RID p_mesh, int p_surface, const PackedVector3Array &p_vertices, const PackedInt32Array &p_face_indices);
 		void clear();
 		void open();
 		void close();
 		void fti_pump();
 		void commit_changes(real_t p_interpolation_fraction);
+		void compute_physics_vertex_mapping(const PackedVector3Array &p_vertices);
+		void recompute_normals();
 
 		bool has_mesh() const {
 			return mesh != RID();
 		}
+
+		ShadingMode get_shading_mode() const;
+		void set_shading_mode(ShadingMode p_shading_mode);
 
 		void set_vertex(int p_vertex_id, const Vector3 &p_vertex) override;
 		void set_normal(int p_vertex_id, const Vector3 &p_normal) override;
@@ -170,6 +194,9 @@ public:
 	void set_disable_mode(DisableMode p_mode);
 	DisableMode get_disable_mode() const;
 
+	void set_shading_mode(ShadingMode p_mode);
+	ShadingMode get_shading_mode() const;
+
 	void set_parent_collision_ignore(const NodePath &p_parent_collision_ignore);
 	const NodePath &get_parent_collision_ignore() const;
 
@@ -234,3 +261,4 @@ private:
 };
 
 VARIANT_ENUM_CAST(SoftBody3D::DisableMode);
+VARIANT_ENUM_CAST(SoftBody3D::ShadingMode);

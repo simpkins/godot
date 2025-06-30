@@ -337,12 +337,6 @@ bool SoftBody3D::_get_property_pinned_points(int p_item, const String &p_what, V
 void SoftBody3D::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_ENTER_WORLD: {
-			if (Engine::get_singleton()->is_editor_hint()) {
-				// I have no idea what this is supposed to do, it's really weird
-				// leaving for upcoming PK work on physics
-				//add_change_receptor(this);
-			}
-
 			RID space = get_world_3d()->get_space();
 			PhysicsServer3D::get_singleton()->soft_body_set_space(physics_rid, space);
 			_prepare_physics_server();
@@ -371,19 +365,6 @@ void SoftBody3D::_notification(int p_what) {
 				_reset_points_offsets();
 				return;
 			}
-
-			if (!simulation_started) {
-				// Avoid rendering mesh at the origin before simulation.
-				return;
-			}
-
-			PhysicsServer3D::get_singleton()->soft_body_set_transform(physics_rid, get_global_transform());
-
-			// Soft body renders mesh in global space.
-			set_notify_transform(false);
-			set_as_top_level(true);
-			set_transform(Transform3D());
-			set_notify_transform(true);
 		} break;
 		case NOTIFICATION_RESET_PHYSICS_INTERPOLATION: {
 			if (mesh.is_valid() && rendering_server_handler->is_ready(mesh->get_rid())) {
@@ -396,6 +377,7 @@ void SoftBody3D::_notification(int p_what) {
 
 		case NOTIFICATION_EXIT_WORLD: {
 			PhysicsServer3D::get_singleton()->soft_body_set_space(physics_rid, RID());
+			_prepare_physics_server();
 		} break;
 
 		case NOTIFICATION_DISABLED: {
@@ -526,20 +508,6 @@ void SoftBody3D::_update_soft_mesh() {
 		return;
 	}
 
-	RID mesh_rid = mesh->get_rid();
-	if (!rendering_server_handler->is_ready(mesh_rid)) {
-		rendering_server_handler->prepare(mesh_rid, 0);
-		PhysicsServer3D::get_singleton()->soft_body_set_transform(physics_rid, get_global_transform());
-		// Soft body renders mesh in global space.
-		set_as_top_level(true);
-		set_transform(Transform3D());
-		simulation_started = true;
-	}
-
-	if (!simulation_started) {
-		return;
-	}
-
 	_update_physics_server();
 
 	if (is_physics_interpolated_and_enabled()) {
@@ -556,6 +524,10 @@ void SoftBody3D::_commit_soft_mesh(real_t p_interpolation_fraction) {
 	}
 }
 
+bool SoftBody3D::_is_simulation_active() const {
+	return is_inside_tree() && mesh.is_valid() && (is_enabled() || (disable_mode != DISABLE_MODE_REMOVE));
+}
+
 void SoftBody3D::_prepare_physics_server() {
 #ifdef TOOLS_ENABLED
 	// We do not perform soft body physics simulations in the editor
@@ -564,7 +536,16 @@ void SoftBody3D::_prepare_physics_server() {
 	}
 #endif
 
-	if (mesh.is_valid() && (is_enabled() || (disable_mode != DISABLE_MODE_REMOVE))) {
+	bool simulation_active = _is_simulation_active();
+	if (simulation_active && !mesh_converted) {
+		if (_create_dynamic_mesh()) {
+			mesh_converted = true;
+		} else {
+			MeshInstance3D::set_mesh(nullptr);
+			simulation_active = false;
+		}
+	}
+	if (simulation_active) {
 		PhysicsServer3D::get_singleton()->soft_body_set_mesh(physics_rid, mesh->get_rid());
 		set_process_internal(is_physics_interpolated_and_enabled());
 		set_physics_process_internal(true);
@@ -576,47 +557,75 @@ void SoftBody3D::_prepare_physics_server() {
 }
 
 void SoftBody3D::set_mesh(const Ref<Mesh> &p_mesh) {
-	if (p_mesh.is_null()) {
-		MeshInstance3D::set_mesh(nullptr);
-		PhysicsServer3D::get_singleton()->soft_body_set_mesh(physics_rid, RID());
+	if (p_mesh == mesh) {
 		return;
 	}
-
-	// We only support meshes where surface 0 is a PRIMITIVE_TRIANGLES surface
-	if ((p_mesh->get_surface_count() < 1 || p_mesh->surface_get_primitive_type(0) != Mesh::PRIMITIVE_TRIANGLES)) {
-		ERR_PRINT("SoftBody3D only supports triangle meshes");
-		MeshInstance3D::set_mesh(nullptr);
-		PhysicsServer3D::get_singleton()->soft_body_set_mesh(physics_rid, RID());
-		return;
-	}
+	mesh_converted = false;
+	MeshInstance3D::set_mesh(p_mesh);
+	_prepare_physics_server();
 
 #ifdef TOOLS_ENABLED
 	if (Engine::get_singleton()->is_editor_hint()) {
-		// The soft body physics simulation does not run in the editor,
-		// so we do not create a dynamically modifiable mesh in this case.
-		MeshInstance3D::set_mesh(p_mesh);
 		update_configuration_warnings();
-		return;
 	}
 #endif
+}
+
+bool SoftBody3D::_create_dynamic_mesh() {
+	// We only support meshes where surface 0 is a PRIMITIVE_TRIANGLES surface
+	ERR_FAIL_COND_V(mesh->get_surface_count() < 1, false);
+	ERR_FAIL_COND_V_MSG(mesh->surface_get_primitive_type(0) != Mesh::PRIMITIVE_TRIANGLES, false, "SoftBody3D only supports triangle meshes");
 
 	// Get current mesh array and create new mesh array with necessary flag for SoftBody
-	Array surface_arrays = p_mesh->surface_get_arrays(0);
-	Array surface_blend_arrays = p_mesh->surface_get_blend_shape_arrays(0);
-	Dictionary surface_lods = p_mesh->surface_get_lods(0);
-	uint32_t surface_format = p_mesh->surface_get_format(0);
+	Array surface_arrays = mesh->surface_get_arrays(0);
+	Array surface_blend_arrays = mesh->surface_get_blend_shape_arrays(0);
+	Dictionary surface_lods = mesh->surface_get_lods(0);
+	uint32_t surface_format = mesh->surface_get_format(0);
 
 	surface_format |= Mesh::ARRAY_FLAG_USE_DYNAMIC_UPDATE;
 	surface_format &= ~Mesh::ARRAY_FLAG_COMPRESS_ATTRIBUTES;
 
+	// Update the mesh vertices with the current global transform,
+	// since we use set_instance_use_identity_transform(true).
+	_update_mesh_arrays_with_transform(surface_arrays, surface_format);
+
 	Ref<ArrayMesh> soft_mesh;
 	soft_mesh.instantiate();
 	soft_mesh->add_surface_from_arrays(Mesh::PRIMITIVE_TRIANGLES, surface_arrays, surface_blend_arrays, surface_lods, surface_format);
-	soft_mesh->surface_set_material(0, p_mesh->surface_get_material(0));
+	soft_mesh->surface_set_material(0, mesh->surface_get_material(0));
+
+	rendering_server_handler->prepare(soft_mesh->get_rid(), 0);
 
 	MeshInstance3D::set_mesh(soft_mesh);
-	if (is_inside_tree() && (is_enabled() || (disable_mode != DISABLE_MODE_REMOVE))) {
-		PhysicsServer3D::get_singleton()->soft_body_set_mesh(physics_rid, soft_mesh->get_rid());
+	return true;
+}
+
+void SoftBody3D::_update_mesh_arrays_with_transform(Array &surface_arrays, uint32_t surface_format) {
+	Transform3D transform = get_global_transform();
+	print_line(vformat("_update_mesh_arrays_with_transform(%s)", transform));
+	if (transform == Transform3D()) {
+		return;
+	}
+
+	PackedVector3Array vertices = surface_arrays[Mesh::ARRAY_VERTEX];
+	// Temporarily reset surface_arrays to avoid an unnecessary copy-on-write
+	// when we we modify the array.
+	surface_arrays[Mesh::ARRAY_VERTEX] = Variant();
+	int vertex_count = vertices.size();
+	Vector3 *vptr = vertices.ptrw();
+	for (int vidx = 0; vidx < vertex_count; ++vidx) {
+		vptr[vidx] = transform.xform(vptr[vidx]);
+	}
+	surface_arrays[Mesh::ARRAY_VERTEX] = vertices;
+
+	if (surface_format & Mesh::ARRAY_FORMAT_NORMAL) {
+		PackedVector3Array normals = surface_arrays[Mesh::ARRAY_NORMAL];
+		Vector3 *nptr = vertices.ptrw();
+		surface_arrays[Mesh::ARRAY_NORMAL] = Variant();
+		for (int vidx = 0; vidx < vertex_count; ++vidx) {
+			nptr[vidx] = transform.xform(nptr[vidx]);
+		}
+		surface_arrays[Mesh::ARRAY_NORMAL] = normals;
 	}
 }
 
@@ -681,7 +690,7 @@ void SoftBody3D::set_disable_mode(DisableMode p_mode) {
 
 	disable_mode = p_mode;
 
-	if (mesh.is_valid() && is_inside_tree() && !is_enabled()) {
+	if (mesh.is_valid() && is_inside_tree()) {
 		_prepare_physics_server();
 	}
 }
@@ -848,6 +857,11 @@ SoftBody3D::SoftBody3D() :
 		physics_rid(PhysicsServer3D::get_singleton()->soft_body_create()) {
 	rendering_server_handler = memnew(SoftBodyRenderingServerHandler);
 	PhysicsServer3D::get_singleton()->body_attach_object_instance_id(physics_rid, get_instance_id());
+
+	// We always render at the origin in game.
+	// In the editor we don't run physics simulations, and we just render the input static mesh,
+	// so we do want to render it at the initial transform where the simulation starts.
+	set_instance_use_identity_transform(!Engine::get_singleton()->is_editor_hint());
 }
 
 SoftBody3D::~SoftBody3D() {

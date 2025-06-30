@@ -103,8 +103,17 @@ private:
 	uint32_t collision_layer = 1;
 	NodePath parent_collision_ignore;
 	Vector<PinnedPoint> pinned_points;
-	bool simulation_started = false;
 	bool pinned_points_cache_dirty = true;
+
+	// mesh_converted whether or not we have converted the mesh property from
+	// the original (static, possibly shared) mesh to a dynamic mesh that only
+	// we own.  We clear this flag only when set_mesh() is called to change the
+	// mesh.  If the soft body is disabled and re-enabled, or removed and
+	// re-added to the scene tree, we do not clear mesh_converted, so that when
+	// the mesh is re-added we add it back with the vertex locations in the
+	// same place as they were when the body was disabled/removed.  (However,
+	// note that vertex velocities are reset to 0 in this case.)
+	bool mesh_converted = false;
 
 	Ref<ArrayMesh> debug_mesh_cache;
 	class MeshInstance3D *debug_mesh = nullptr;
@@ -118,7 +127,10 @@ private:
 	void _update_soft_mesh();
 	void _commit_soft_mesh(real_t p_interpolation_fraction);
 
+	bool _is_simulation_active() const;
 	void _prepare_physics_server();
+	bool _create_dynamic_mesh();
+	void _update_mesh_arrays_with_transform(Array &surface_arrays, uint32_t surface_format);
 
 protected:
 	bool _set(const StringName &p_name, const Variant &p_value);

@@ -66,6 +66,10 @@ private:
 	void fti_pump();
 	void commit_changes(real_t p_interpolation_fraction);
 
+	bool has_mesh() const {
+		return mesh != RID();
+	}
+
 public:
 	void set_vertex(int p_vertex_id, const Vector3 &p_vertex) override;
 	void set_normal(int p_vertex_id, const Vector3 &p_normal) override;
@@ -103,14 +107,19 @@ private:
 	uint32_t collision_layer = 1;
 	NodePath parent_collision_ignore;
 	Vector<PinnedPoint> pinned_points;
-	bool simulation_started = false;
 	bool pinned_points_cache_dirty = true;
 
-	Ref<ArrayMesh> debug_mesh_cache;
-	class MeshInstance3D *debug_mesh = nullptr;
+	// The simulation is active when all of the following are true:
+	// - we have a valid mesh set
+	// - we are in the scene tree
+	// - we are enabled, or disable_mode is DISABLE_MODE_KEEP_ACTIVE
+	bool simulation_active = false;
 
 	bool capture_input_on_drag = false;
 	bool ray_pickable = true;
+
+	Ref<ArrayMesh> debug_mesh_cache;
+	class MeshInstance3D *debug_mesh = nullptr;
 
 	void _update_pickable();
 
@@ -118,7 +127,10 @@ private:
 	void _update_soft_mesh();
 	void _commit_soft_mesh(real_t p_interpolation_fraction);
 
-	void _prepare_physics_server();
+	void _update_simulation_active();
+	void _process_set_mesh(const Ref<Mesh> &_mesh);
+	void _convert_mesh(const Ref<Mesh> &p_mesh);
+	void _update_mesh_arrays_with_transform(Array &surface_arrays, uint32_t surface_format);
 
 protected:
 	bool _set(const StringName &p_name, const Variant &p_value);

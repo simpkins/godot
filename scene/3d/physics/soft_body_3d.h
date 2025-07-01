@@ -35,47 +35,6 @@
 
 class PhysicsBody3D;
 
-class SoftBodyRenderingServerHandler : public PhysicsServer3DRenderingServerHandler {
-	friend class SoftBody3D;
-
-	RID mesh;
-	int surface = 0;
-	AABB aabb_prev;
-	AABB aabb_curr;
-	Vector<uint8_t> buffer[2];
-	Vector<uint8_t> *buffer_prev = nullptr;
-	Vector<uint8_t> *buffer_curr = nullptr;
-	Vector<uint8_t> buffer_interp;
-	uint32_t vertex_count = 0;
-	uint32_t stride = 0;
-	uint32_t normal_stride = 0;
-	uint32_t offset_vertices = 0;
-	uint32_t offset_normal = 0;
-
-	AABB aabb_last;
-
-	uint8_t *write_buffer = nullptr;
-
-private:
-	SoftBodyRenderingServerHandler();
-	bool is_ready(RID p_mesh_rid) const { return mesh.is_valid() && mesh == p_mesh_rid; }
-	void prepare(RID p_mesh_rid, int p_surface);
-	void clear();
-	void open();
-	void close();
-	void fti_pump();
-	void commit_changes(real_t p_interpolation_fraction);
-
-	bool has_mesh() const {
-		return mesh != RID();
-	}
-
-public:
-	void set_vertex(int p_vertex_id, const Vector3 &p_vertex) override;
-	void set_normal(int p_vertex_id, const Vector3 &p_normal) override;
-	void set_aabb(const AABB &p_aabb) override;
-};
-
 class SoftBody3D : public MeshInstance3D {
 	GDCLASS(SoftBody3D, MeshInstance3D);
 
@@ -97,7 +56,45 @@ public:
 	};
 
 private:
-	SoftBodyRenderingServerHandler *rendering_server_handler = nullptr;
+	// Information used to update the mesh vertex buffer in the RenderingServer
+	class BufferData : public PhysicsServer3DRenderingServerHandler {
+		RID mesh;
+		int surface = 0;
+		AABB aabb_prev;
+		AABB aabb_curr;
+		Vector<uint8_t> buffer[2];
+		Vector<uint8_t> *buffer_prev = nullptr;
+		Vector<uint8_t> *buffer_curr = nullptr;
+		Vector<uint8_t> buffer_interp;
+		uint32_t vertex_count = 0;
+		uint32_t stride = 0;
+		uint32_t normal_stride = 0;
+		uint32_t offset_vertices = 0;
+		uint32_t offset_normal = 0;
+
+		AABB aabb_last;
+
+		uint8_t *write_buffer = nullptr;
+
+	public:
+		BufferData();
+		void prepare(RID p_mesh_rid, int p_surface);
+		void clear();
+		void open();
+		void close();
+		void fti_pump();
+		void commit_changes(real_t p_interpolation_fraction);
+
+		bool has_mesh() const {
+			return mesh != RID();
+		}
+
+		void set_vertex(int p_vertex_id, const Vector3 &p_vertex) override;
+		void set_normal(int p_vertex_id, const Vector3 &p_normal) override;
+		void set_aabb(const AABB &p_aabb) override;
+	};
+
+	BufferData buffer_data;
 
 	RID physics_rid;
 

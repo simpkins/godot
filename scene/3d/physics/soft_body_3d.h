@@ -31,9 +31,9 @@
 #pragma once
 
 #include "scene/3d/mesh_instance_3d.h"
-#include "servers/physics_server_3d.h"
 
 class PhysicsBody3D;
+class PhysicsDirectSoftBodyState3D;
 
 class SoftBody3D : public MeshInstance3D {
 	GDCLASS(SoftBody3D, MeshInstance3D);
@@ -62,7 +62,7 @@ public:
 
 private:
 	// Information used to update the mesh vertex buffer in the RenderingServer
-	class BufferData : public PhysicsServer3DRenderingServerHandler {
+	class BufferData {
 		RID mesh;
 		int surface = 0;
 		AABB aabb_prev;
@@ -77,9 +77,12 @@ private:
 		uint32_t offset_vertices = 0;
 		uint32_t offset_normal = 0;
 
-		AABB aabb_last;
+		// last_update_frame tracks the last physics frame where we
+		// received a body_state_changed() call from the physics server,
+		// when interpolation is enabled.
+		uint64_t last_update_frame = 0;
 
-		uint8_t *write_buffer = nullptr;
+		AABB aabb_last;
 
 		ShadingMode shading_mode = SoftBody3D::SHADING_SMOOTH;
 
@@ -93,18 +96,18 @@ private:
 		uint32_t physics_vertex_count = 0;
 		PackedInt32Array face_indices;
 
-		void _recompute_normals(Vector<uint8_t> &p_buffer);
+		void _recompute_normals(uint8_t *p_buffer);
+		void _fti_pump();
 
 	public:
 		BufferData();
 		void prepare(RID p_mesh, int p_surface, const PackedVector3Array &p_vertices, const PackedInt32Array &p_face_indices);
 		void clear();
-		void open();
-		void close();
-		void fti_pump();
-		void commit_changes(real_t p_interpolation_fraction);
 		void compute_physics_vertex_mapping(const PackedVector3Array &p_vertices);
 		void recompute_normals();
+		void do_physics_interpolation(real_t p_interpolation_fraction);
+		void body_state_changed(PhysicsDirectSoftBodyState3D *p_state, bool p_interpolation_enabled);
+		void disable_physics_interpolation_until_next_update();
 
 		bool has_mesh() const {
 			return mesh != RID();
@@ -112,10 +115,6 @@ private:
 
 		ShadingMode get_shading_mode() const;
 		void set_shading_mode(ShadingMode p_shading_mode);
-
-		void set_vertex(int p_vertex_id, const Vector3 &p_vertex) override;
-		void set_normal(int p_vertex_id, const Vector3 &p_normal) override;
-		void set_aabb(const AABB &p_aabb) override;
 	};
 
 	BufferData buffer_data;
@@ -145,8 +144,8 @@ private:
 	void _update_pickable();
 
 	void _update_physics_server();
-	void _update_soft_mesh();
-	void _commit_soft_mesh(real_t p_interpolation_fraction);
+	void _do_physics_interpolation(real_t p_interpolation_fraction);
+	void _body_state_changed(PhysicsDirectSoftBodyState3D *p_state);
 
 	void _update_simulation_active();
 	void _process_set_mesh(const Ref<Mesh> &_mesh);

@@ -33,9 +33,9 @@
 
 #include "scene/3d/physics/physics_body_3d.h"
 
-SoftBodyRenderingServerHandler::SoftBodyRenderingServerHandler() {}
+SoftBody3D::BufferData::BufferData() = default;
 
-void SoftBodyRenderingServerHandler::prepare(RID p_mesh, int p_surface) {
+void SoftBody3D::BufferData::prepare(RID p_mesh, int p_surface) {
 	clear();
 
 	ERR_FAIL_COND(!p_mesh.is_valid());
@@ -63,7 +63,7 @@ void SoftBodyRenderingServerHandler::prepare(RID p_mesh, int p_surface) {
 	buffer_prev = &buffer[1];
 }
 
-void SoftBodyRenderingServerHandler::clear() {
+void SoftBody3D::BufferData::clear() {
 	aabb_prev = AABB();
 	aabb_curr = AABB();
 	buffer[0].resize(0);
@@ -82,15 +82,15 @@ void SoftBodyRenderingServerHandler::clear() {
 	mesh = RID();
 }
 
-void SoftBodyRenderingServerHandler::open() {
+void SoftBody3D::BufferData::open() {
 	write_buffer = buffer_curr->ptrw();
 }
 
-void SoftBodyRenderingServerHandler::close() {
+void SoftBody3D::BufferData::close() {
 	write_buffer = nullptr;
 }
 
-void SoftBodyRenderingServerHandler::fti_pump() {
+void SoftBody3D::BufferData::fti_pump() {
 	if (buffer_prev->is_empty()) {
 		buffer_prev->resize(buffer_curr->size());
 	}
@@ -98,7 +98,7 @@ void SoftBodyRenderingServerHandler::fti_pump() {
 	aabb_prev = aabb_curr;
 }
 
-void SoftBodyRenderingServerHandler::commit_changes(real_t p_interpolation_fraction) {
+void SoftBody3D::BufferData::commit_changes(real_t p_interpolation_fraction) {
 	real_t f = p_interpolation_fraction;
 	AABB aabb_interp = aabb_curr;
 
@@ -155,14 +155,14 @@ void SoftBodyRenderingServerHandler::commit_changes(real_t p_interpolation_fract
 	RS::get_singleton()->mesh_surface_update_vertex_region(mesh, surface, 0, p_interpolation_fraction < 1 ? buffer_interp : *buffer_curr);
 }
 
-void SoftBodyRenderingServerHandler::set_vertex(int p_vertex_id, const Vector3 &p_vertex) {
+void SoftBody3D::BufferData::set_vertex(int p_vertex_id, const Vector3 &p_vertex) {
 	float *vertex_buffer = reinterpret_cast<float *>(write_buffer + p_vertex_id * stride + offset_vertices);
 	*vertex_buffer++ = (float)p_vertex.x;
 	*vertex_buffer++ = (float)p_vertex.y;
 	*vertex_buffer++ = (float)p_vertex.z;
 }
 
-void SoftBodyRenderingServerHandler::set_normal(int p_vertex_id, const Vector3 &p_normal) {
+void SoftBody3D::BufferData::set_normal(int p_vertex_id, const Vector3 &p_normal) {
 	Vector2 res = p_normal.octahedron_encode();
 	uint32_t value = 0;
 	value |= (uint16_t)CLAMP(res.x * 65535, 0, 65535);
@@ -170,7 +170,7 @@ void SoftBodyRenderingServerHandler::set_normal(int p_vertex_id, const Vector3 &
 	memcpy(&write_buffer[p_vertex_id * normal_stride + offset_normal], &value, sizeof(uint32_t));
 }
 
-void SoftBodyRenderingServerHandler::set_aabb(const AABB &p_aabb) {
+void SoftBody3D::BufferData::set_aabb(const AABB &p_aabb) {
 	aabb_curr = p_aabb;
 }
 
@@ -337,7 +337,7 @@ bool SoftBody3D::_get_property_pinned_points(int p_item, const String &p_what, V
 void SoftBody3D::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_ENTER_WORLD: {
-			if (mesh.is_valid() && !rendering_server_handler->has_mesh()) {
+			if (mesh.is_valid() && !buffer_data.has_mesh()) {
 				_convert_mesh(mesh);
 			}
 			RID space = get_world_3d()->get_space();
@@ -370,8 +370,8 @@ void SoftBody3D::_notification(int p_what) {
 			}
 		} break;
 		case NOTIFICATION_RESET_PHYSICS_INTERPOLATION: {
-			if (rendering_server_handler->has_mesh()) {
-				rendering_server_handler->fti_pump();
+			if (buffer_data.has_mesh()) {
+				buffer_data.fti_pump();
 			}
 		} break;
 		case NOTIFICATION_VISIBILITY_CHANGED: {
@@ -474,8 +474,8 @@ void SoftBody3D::_bind_methods() {
 }
 
 void SoftBody3D::_physics_interpolated_changed() {
-	if (rendering_server_handler->has_mesh()) {
-		rendering_server_handler->fti_pump();
+	if (buffer_data.has_mesh()) {
+		buffer_data.fti_pump();
 	}
 	MeshInstance3D::_physics_interpolated_changed();
 }
@@ -506,22 +506,22 @@ void SoftBody3D::_update_soft_mesh() {
 	_update_physics_server();
 
 	if (is_physics_interpolated_and_enabled()) {
-		rendering_server_handler->fti_pump();
+		buffer_data.fti_pump();
 	}
-	rendering_server_handler->open();
-	PhysicsServer3D::get_singleton()->soft_body_update_rendering_server(physics_rid, rendering_server_handler);
-	rendering_server_handler->close();
+	buffer_data.open();
+	PhysicsServer3D::get_singleton()->soft_body_update_rendering_server(physics_rid, &buffer_data);
+	buffer_data.close();
 }
 
 void SoftBody3D::_commit_soft_mesh(real_t p_interpolation_fraction) {
-	rendering_server_handler->commit_changes(p_interpolation_fraction);
+	buffer_data.commit_changes(p_interpolation_fraction);
 }
 
 void SoftBody3D::_update_simulation_active() {
 	// Note that the simulation is never active in the editor;
-	// rendering_server_handler->has_mesh() always returns false in the editor.
+	// buffer_data.has_mesh() always returns false in the editor.
 
-	const bool new_state = is_inside_tree() && rendering_server_handler->has_mesh() && (is_enabled() || (disable_mode != DISABLE_MODE_REMOVE));
+	const bool new_state = is_inside_tree() && buffer_data.has_mesh() && (is_enabled() || (disable_mode != DISABLE_MODE_REMOVE));
 	if (new_state == simulation_active) {
 		// We want to avoid calling soft_body_set_mesh() again if we are already active,
 		// since resetting the mesh may reset vertex velocities and recompute rest edge lengths
@@ -558,7 +558,7 @@ void SoftBody3D::set_mesh(const Ref<Mesh> &p_mesh) {
 
 void SoftBody3D::_process_set_mesh(const Ref<Mesh> &p_mesh) {
 	if (p_mesh.is_null()) {
-		rendering_server_handler->clear();
+		buffer_data.clear();
 		MeshInstance3D::set_mesh(nullptr);
 		return;
 	}
@@ -566,17 +566,17 @@ void SoftBody3D::_process_set_mesh(const Ref<Mesh> &p_mesh) {
 	// We only support meshes where surface 0 is a PRIMITIVE_TRIANGLES surface
 	if (p_mesh->get_surface_count() < 1 || p_mesh->surface_get_primitive_type(0) != Mesh::PRIMITIVE_TRIANGLES) {
 		ERR_PRINT("SoftBody3D only supports triangle meshes");
-		rendering_server_handler->clear();
+		buffer_data.clear();
 		MeshInstance3D::set_mesh(nullptr);
 		return;
 	}
 
 	// If we are not currently in the scene tree, we do not know our global transform
 	// and therefore cannot create the dynamic soft mesh yet.
-	// Calling rendering_server_handler->clear() will let us know that we still need to
+	// Calling buffer_data.clear() will let us know that we still need to
 	// convert the mesh later on receipt of NOTIFICATION_ENTER_WORLD.
 	if (!is_inside_tree()) {
-		rendering_server_handler->clear();
+		buffer_data.clear();
 		MeshInstance3D::set_mesh(p_mesh);
 		return;
 	}
@@ -614,7 +614,7 @@ void SoftBody3D::_convert_mesh(const Ref<Mesh> &p_mesh) {
 	soft_mesh->surface_set_material(0, p_mesh->surface_get_material(0));
 
 	RID soft_mesh_rid = soft_mesh->get_rid();
-	rendering_server_handler->prepare(soft_mesh_rid, 0);
+	buffer_data.prepare(soft_mesh_rid, 0);
 	MeshInstance3D::set_mesh(soft_mesh);
 	if (simulation_active) {
 		PhysicsServer3D::get_singleton()->soft_body_set_mesh(physics_rid, soft_mesh_rid);
@@ -872,7 +872,6 @@ bool SoftBody3D::is_ray_pickable() const {
 
 SoftBody3D::SoftBody3D() :
 		physics_rid(PhysicsServer3D::get_singleton()->soft_body_create()) {
-	rendering_server_handler = memnew(SoftBodyRenderingServerHandler);
 	PhysicsServer3D::get_singleton()->body_attach_object_instance_id(physics_rid, get_instance_id());
 
 	// We always render at the origin in game.
@@ -882,7 +881,6 @@ SoftBody3D::SoftBody3D() :
 }
 
 SoftBody3D::~SoftBody3D() {
-	memdelete(rendering_server_handler);
 	ERR_FAIL_NULL(PhysicsServer3D::get_singleton());
 	PhysicsServer3D::get_singleton()->free(physics_rid);
 }

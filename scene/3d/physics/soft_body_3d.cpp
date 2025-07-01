@@ -32,6 +32,7 @@
 #include "soft_body_3d.compat.inc"
 
 #include "scene/3d/physics/physics_body_3d.h"
+#include "servers/physics_server_3d.h"
 
 SoftBody3D::BufferData::BufferData() = default;
 
@@ -115,15 +116,7 @@ void SoftBody3D::BufferData::clear() {
 	mesh = RID();
 }
 
-void SoftBody3D::BufferData::open() {
-	write_buffer = buffer_curr->ptrw();
-}
-
-void SoftBody3D::BufferData::close() {
-	write_buffer = nullptr;
-}
-
-void SoftBody3D::BufferData::fti_pump() {
+void SoftBody3D::BufferData::_fti_pump() {
 	if (buffer_prev->is_empty()) {
 		buffer_prev->resize(buffer_curr->size());
 	}
@@ -131,74 +124,116 @@ void SoftBody3D::BufferData::fti_pump() {
 	aabb_prev = aabb_curr;
 }
 
-void SoftBody3D::BufferData::commit_changes(real_t p_interpolation_fraction) {
-	real_t f = p_interpolation_fraction;
+void SoftBody3D::BufferData::do_physics_interpolation(real_t p_interpolation_fraction) {
+	const real_t f = p_interpolation_fraction;
+
+	// Only do interpolation if the soft body received an update from the physics
+	// engine in the most recent frame.  We do not want to perform interpolation
+	// for sleeping soft bodies that have not received state updates recently.
+	const uint64_t current_frame = Engine::get_singleton()->get_physics_frames();
+	if (last_update_frame != current_frame) {
+		return;
+	}
+
+	if (buffer_prev->size() != buffer_curr->size()) {
+		// We need to have seen two body_state_changed() updates for this mesh before we
+		// can do physics interpolation.
+		return;
+	}
+
+	if (buffer_interp.is_empty()) {
+		buffer_interp.resize(buffer_curr->size());
+	}
+
+	// AABB.
 	AABB aabb_interp = aabb_curr;
+	if (aabb_prev != AABB() && aabb_curr != AABB()) {
+		aabb_interp = AABB(aabb_prev.position.lerp(aabb_curr.position, f), aabb_prev.size.lerp(aabb_curr.size, f));
+	}
 
-	Vector<uint8_t> &active_buffer = p_interpolation_fraction < 1 ? buffer_interp : *buffer_curr;
-	if (p_interpolation_fraction < 1) {
-		if (buffer_interp.is_empty()) {
-			buffer_interp.resize(buffer_curr->size());
-		}
+	const float *vertex_prev = reinterpret_cast<const float *>(buffer_prev->ptr() + offset_vertices);
+	const float *vertex_curr = reinterpret_cast<const float *>(buffer_curr->ptr() + offset_vertices);
+	float *vertex_interp = reinterpret_cast<float *>(buffer_interp.ptrw() + offset_vertices);
 
-		// AABB.
-		if (aabb_prev != AABB() && aabb_curr != AABB()) {
-			aabb_interp = AABB(aabb_prev.position.lerp(aabb_curr.position, f), aabb_prev.size.lerp(aabb_curr.size, f));
-		}
+	uint32_t stride_units = stride / sizeof(float);
 
-		const float *vertex_prev = reinterpret_cast<const float *>(buffer_prev->ptr() + offset_vertices);
-		const float *vertex_curr = reinterpret_cast<const float *>(buffer_curr->ptr() + offset_vertices);
-		float *vertex_interp = reinterpret_cast<float *>(buffer_interp.ptrw() + offset_vertices);
+	const uint32_t *normal_prev = reinterpret_cast<const uint32_t *>(buffer_prev->ptr() + offset_normal);
+	const uint32_t *normal_curr = reinterpret_cast<const uint32_t *>(buffer_curr->ptr() + offset_normal);
+	uint32_t *normal_interp = reinterpret_cast<uint32_t *>(buffer_interp.ptrw() + offset_normal);
+	uint32_t normal_stride_units = normal_stride / sizeof(uint32_t);
 
-		uint32_t stride_units = stride / sizeof(float);
+	for (uint32_t i = 0; i < vertex_count; i++) {
+		// Vertex.
+		vertex_interp[0] = Math::lerp(vertex_prev[0], vertex_curr[0], (float)f);
+		vertex_interp[1] = Math::lerp(vertex_prev[1], vertex_curr[1], (float)f);
+		vertex_interp[2] = Math::lerp(vertex_prev[2], vertex_curr[2], (float)f);
 
-		const uint32_t *normal_prev = reinterpret_cast<const uint32_t *>(buffer_prev->ptr() + offset_normal);
-		const uint32_t *normal_curr = reinterpret_cast<const uint32_t *>(buffer_curr->ptr() + offset_normal);
-		uint32_t *normal_interp = reinterpret_cast<uint32_t *>(buffer_interp.ptrw() + offset_normal);
-		uint32_t normal_stride_units = normal_stride / sizeof(uint32_t);
+		vertex_prev += stride_units;
+		vertex_curr += stride_units;
+		vertex_interp += stride_units;
 
-		for (uint32_t i = 0; i < vertex_count; i++) {
-			// Vertex.
-			vertex_interp[0] = Math::lerp(vertex_prev[0], vertex_curr[0], (float)f);
-			vertex_interp[1] = Math::lerp(vertex_prev[1], vertex_curr[1], (float)f);
-			vertex_interp[2] = Math::lerp(vertex_prev[2], vertex_curr[2], (float)f);
+		// Normal.
+		Vector2 prev = Vector2((normal_prev[0] & 0xffff) / 65535.0f, (normal_prev[0] >> 16) / 65535.0f);
+		Vector2 curr = Vector2((normal_curr[0] & 0xffff) / 65535.0f, (normal_curr[0] >> 16) / 65535.0f);
+		Vector2 interp = Vector3::octahedron_decode(prev).lerp(Vector3::octahedron_decode(curr), f).octahedron_encode();
+		uint32_t n = 0;
+		n |= (uint16_t)CLAMP(interp.x * 65535, 0, 65535);
+		n |= (uint16_t)CLAMP(interp.y * 65535, 0, 65535) << 16;
+		normal_interp[0] = n;
 
-			vertex_prev += stride_units;
-			vertex_curr += stride_units;
-			vertex_interp += stride_units;
-
-			// Normal.
-			Vector2 prev = Vector2((normal_prev[0] & 0xffff) / 65535.0f, (normal_prev[0] >> 16) / 65535.0f);
-			Vector2 curr = Vector2((normal_curr[0] & 0xffff) / 65535.0f, (normal_curr[0] >> 16) / 65535.0f);
-			Vector2 interp = Vector3::octahedron_decode(prev).lerp(Vector3::octahedron_decode(curr), f).octahedron_encode();
-			uint32_t n = 0;
-			n |= (uint16_t)CLAMP(interp.x * 65535, 0, 65535);
-			n |= (uint16_t)CLAMP(interp.y * 65535, 0, 65535) << 16;
-			normal_interp[0] = n;
-
-			normal_prev += normal_stride_units;
-			normal_curr += normal_stride_units;
-			normal_interp += normal_stride_units;
-		}
-	} else {
-		_recompute_normals(active_buffer);
+		normal_prev += normal_stride_units;
+		normal_curr += normal_stride_units;
+		normal_interp += normal_stride_units;
 	}
 
 	if (aabb_interp != aabb_last) {
 		RS::get_singleton()->mesh_set_custom_aabb(mesh, aabb_interp);
 		aabb_last = aabb_interp;
 	}
-	RS::get_singleton()->mesh_surface_update_vertex_region(mesh, surface, 0, active_buffer);
+	RS::get_singleton()->mesh_surface_update_vertex_region(mesh, surface, 0, buffer_interp);
 }
 
-void SoftBody3D::BufferData::_recompute_normals(Vector<uint8_t> &p_buffer) {
+void SoftBody3D::BufferData::disable_physics_interpolation_until_next_update() {
+	// We only perform physics interpolation when last_update_frame is the current frame.
+	// Setting the last_update_frame to an older frame will prevent us from doing interpolation
+	// until after the next body_state_changed() call.
+	last_update_frame = Engine::get_singleton()->get_physics_frames() - 2;
+}
+
+void SoftBody3D::BufferData::body_state_changed(PhysicsDirectSoftBodyState3D *p_state, bool p_interpolation_enabled) {
+	if (p_interpolation_enabled) {
+		_fti_pump();
+		last_update_frame = Engine::get_singleton()->get_physics_frames();
+	}
+
+	PackedVector3Array vertices = p_state->get_vertices();
+	const Vector3 *const vp = vertices.ptr();
+	uint8_t *buffer_ptr = buffer_curr->ptrw();
+	uint8_t *vertex_buffer = buffer_ptr + offset_vertices;
+	for (uint32_t vidx = 0; vidx < vertex_count; ++vidx) {
+		const Vector3 &v = vp[vidx];
+		float as_floats[3] = { static_cast<float>(v.x), static_cast<float>(v.y), static_cast<float>(v.z) };
+		memcpy(vertex_buffer, as_floats, sizeof(as_floats));
+		vertex_buffer += stride;
+	}
+
+	_recompute_normals(buffer_ptr);
+	RS::get_singleton()->mesh_surface_update_vertex_region(mesh, surface, 0, *buffer_curr);
+
+	AABB aabb = p_state->get_aabb();
+	if (aabb != aabb_last) {
+		RS::get_singleton()->mesh_set_custom_aabb(mesh, aabb);
+		aabb_last = aabb;
+	}
+}
+
+void SoftBody3D::BufferData::_recompute_normals(uint8_t *p_buffer) {
 	const bool smooth_shading = shading_mode == SoftBody3D::SHADING_SMOOTH;
 	const int normal_buffer_size = smooth_shading ? physics_vertex_count : vertex_count;
 	normal_compute_buffer.clear();
 	normal_compute_buffer.resize(normal_buffer_size);
 
-	uint8_t *const buffer_ptr = p_buffer.ptrw();
-	const uint8_t *const vertex_buffer = buffer_ptr + offset_vertices;
+	const uint8_t *const vertex_buffer = p_buffer + offset_vertices;
 	auto get_vertex = [&](int vidx) {
 		const uint8_t *vertex_data = vertex_buffer + vidx * stride;
 		Vector3 result;
@@ -253,7 +288,7 @@ void SoftBody3D::BufferData::_recompute_normals(Vector<uint8_t> &p_buffer) {
 
 	// Now assign each mesh vertex the normal computed
 	// from its physics vertex
-	uint8_t *normal_buffer = buffer_ptr + offset_normal;
+	uint8_t *normal_buffer = p_buffer + offset_normal;
 	for (uint32_t mesh_idx = 0; mesh_idx < vertex_count; ++mesh_idx, normal_buffer += normal_stride) {
 		uint32_t normal_idx = smooth_shading ? mesh_to_physics[mesh_idx] : mesh_idx;
 		Vector2 encoded = normal_compute_buffer[normal_idx].octahedron_encode();
@@ -265,23 +300,8 @@ void SoftBody3D::BufferData::_recompute_normals(Vector<uint8_t> &p_buffer) {
 }
 
 void SoftBody3D::BufferData::recompute_normals() {
-	_recompute_normals(*buffer_curr);
+	_recompute_normals(buffer_curr->ptrw());
 	RS::get_singleton()->mesh_surface_update_vertex_region(mesh, surface, 0, *buffer_curr);
-}
-
-void SoftBody3D::BufferData::set_vertex(int p_vertex_id, const Vector3 &p_vertex) {
-	float *vertex_buffer = reinterpret_cast<float *>(write_buffer + p_vertex_id * stride + offset_vertices);
-	*vertex_buffer++ = (float)p_vertex.x;
-	*vertex_buffer++ = (float)p_vertex.y;
-	*vertex_buffer++ = (float)p_vertex.z;
-}
-
-void SoftBody3D::BufferData::set_normal(int p_vertex_id, const Vector3 &p_normal) {
-	// We don't do anything here.  Eventually the goal is to deprecate normal calculation in the physics server.
-}
-
-void SoftBody3D::BufferData::set_aabb(const AABB &p_aabb) {
-	aabb_curr = p_aabb;
 }
 
 SoftBody3D::ShadingMode SoftBody3D::BufferData::get_shading_mode() const {
@@ -467,15 +487,12 @@ void SoftBody3D::_notification(int p_what) {
 		} break;
 		case NOTIFICATION_INTERNAL_PROCESS: {
 			if (simulation_active && is_physics_interpolated_and_enabled()) {
-				_commit_soft_mesh(Engine::get_singleton()->get_physics_interpolation_fraction());
+				buffer_data.do_physics_interpolation(Engine::get_singleton()->get_physics_interpolation_fraction());
 			}
 		} break;
 		case NOTIFICATION_INTERNAL_PHYSICS_PROCESS: {
-			if (simulation_active) {
-				_update_soft_mesh();
-				if (!is_physics_interpolated_and_enabled()) {
-					_commit_soft_mesh(1);
-				}
+			if (is_inside_tree()) {
+				_update_physics_server();
 			}
 		} break;
 		case NOTIFICATION_READY: {
@@ -491,8 +508,15 @@ void SoftBody3D::_notification(int p_what) {
 			}
 		} break;
 		case NOTIFICATION_RESET_PHYSICS_INTERPOLATION: {
-			if (buffer_data.has_mesh()) {
-				buffer_data.fti_pump();
+			buffer_data.disable_physics_interpolation_until_next_update();
+			if (simulation_active) {
+				// We'll get NOTIFICATION_RESET_PHYSICS_INTERPOLATION if the user calls
+				// reset_physics_interpolation() explicitly, or if the global
+				// SceneTree.physics_interpolated setting is changed.
+				//
+				// In case SceneTree.physics_interpolated has changed we need to update
+				// our set_process_internal() setting.
+				set_process_internal(is_physics_interpolated_and_enabled());
 			}
 		} break;
 		case NOTIFICATION_VISIBILITY_CHANGED: {
@@ -505,6 +529,7 @@ void SoftBody3D::_notification(int p_what) {
 		} break;
 
 		case NOTIFICATION_DISABLED: {
+			buffer_data.disable_physics_interpolation_until_next_update();
 			_update_simulation_active();
 		} break;
 
@@ -599,8 +624,9 @@ void SoftBody3D::_bind_methods() {
 }
 
 void SoftBody3D::_physics_interpolated_changed() {
-	if (buffer_data.has_mesh()) {
-		buffer_data.fti_pump();
+	buffer_data.disable_physics_interpolation_until_next_update();
+	if (simulation_active) {
+		set_process_internal(is_physics_interpolated_and_enabled());
 	}
 	MeshInstance3D::_physics_interpolated_changed();
 }
@@ -627,19 +653,8 @@ void SoftBody3D::_update_physics_server() {
 	}
 }
 
-void SoftBody3D::_update_soft_mesh() {
-	_update_physics_server();
-
-	if (is_physics_interpolated_and_enabled()) {
-		buffer_data.fti_pump();
-	}
-	buffer_data.open();
-	PhysicsServer3D::get_singleton()->soft_body_update_rendering_server(physics_rid, &buffer_data);
-	buffer_data.close();
-}
-
-void SoftBody3D::_commit_soft_mesh(real_t p_interpolation_fraction) {
-	buffer_data.commit_changes(p_interpolation_fraction);
+void SoftBody3D::_body_state_changed(PhysicsDirectSoftBodyState3D *p_state) {
+	buffer_data.body_state_changed(p_state, is_physics_interpolated_and_enabled());
 }
 
 void SoftBody3D::_update_simulation_active() {
@@ -1007,6 +1022,7 @@ bool SoftBody3D::is_ray_pickable() const {
 SoftBody3D::SoftBody3D() :
 		physics_rid(PhysicsServer3D::get_singleton()->soft_body_create()) {
 	PhysicsServer3D::get_singleton()->body_attach_object_instance_id(physics_rid, get_instance_id());
+	PhysicsServer3D::get_singleton()->soft_body_set_state_sync_callback(physics_rid, callable_mp(this, &SoftBody3D::_body_state_changed));
 
 	// We always render at the origin in game.
 	// In the editor we don't run physics simulations, and we just render the input static mesh,

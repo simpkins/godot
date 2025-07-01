@@ -365,6 +365,15 @@ void SoftBody3D::_notification(int p_what) {
 				_reset_points_offsets();
 				return;
 			}
+
+			// If we are actively running the soft body simulation, inform the physics server
+			// of the translation change.  This preserves older behavior of SoftBody3D.
+			if (_is_simulation_active()) {
+				Transform3D current_transform = get_global_transform();
+				Transform3D relative_transform = _get_relative_transform(applied_transform, current_transform);
+				PhysicsServer3D::get_singleton()->soft_body_set_transform(physics_rid, relative_transform);
+				applied_transform = current_transform;
+			}
 		} break;
 		case NOTIFICATION_RESET_PHYSICS_INTERPOLATION: {
 			if (mesh.is_valid() && rendering_server_handler->is_ready(mesh->get_rid())) {
@@ -537,12 +546,25 @@ void SoftBody3D::_prepare_physics_server() {
 #endif
 
 	bool simulation_active = _is_simulation_active();
-	if (simulation_active && !mesh_converted) {
-		if (_create_dynamic_mesh()) {
-			mesh_converted = true;
+	if (simulation_active) {
+		if (!mesh_converted) {
+			if (_create_dynamic_mesh()) {
+				mesh_converted = true;
+			} else {
+				MeshInstance3D::set_mesh(nullptr);
+				simulation_active = false;
+			}
 		} else {
-			MeshInstance3D::set_mesh(nullptr);
-			simulation_active = false;
+			// TODO: check to see if the transform was changed since
+			// we were last active, and apply the relative transform now
+			Transform3D current_transform = get_global_transform();
+			if (current_transform != applied_transform) {
+				Transform3D relative_transform = _get_relative_transform(applied_transform, current_transform);
+				Array surface_arrays = mesh->surface_get_arrays(0);
+				uint32_t surface_format = mesh->surface_get_format(0);
+				_update_mesh_arrays_with_transform(surface_arrays, surface_format, relative_transform);
+				applied_transform = current_transform;
+			}
 		}
 	}
 	if (simulation_active) {
@@ -587,7 +609,9 @@ bool SoftBody3D::_create_dynamic_mesh() {
 
 	// Update the mesh vertices with the current global transform,
 	// since we use set_instance_use_identity_transform(true).
-	_update_mesh_arrays_with_transform(surface_arrays, surface_format);
+	Transform3D transform = get_global_transform();
+	_update_mesh_arrays_with_transform(surface_arrays, surface_format, transform);
+	applied_transform = transform;
 
 	Ref<ArrayMesh> soft_mesh;
 	soft_mesh.instantiate();
@@ -600,8 +624,11 @@ bool SoftBody3D::_create_dynamic_mesh() {
 	return true;
 }
 
-void SoftBody3D::_update_mesh_arrays_with_transform(Array &surface_arrays, uint32_t surface_format) {
-	Transform3D transform = get_global_transform();
+Transform3D SoftBody3D::_get_relative_transform(const Transform3D &from_transform, const Transform3D &to_transform) {
+	return to_transform * from_transform.affine_inverse();
+}
+
+void SoftBody3D::_update_mesh_arrays_with_transform(Array &surface_arrays, uint32_t surface_format, const Transform3D &transform) {
 	print_line(vformat("_update_mesh_arrays_with_transform(%s)", transform));
 	if (transform == Transform3D()) {
 		return;

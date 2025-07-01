@@ -114,6 +114,7 @@ private:
 	// same place as they were when the body was disabled/removed.  (However,
 	// note that vertex velocities are reset to 0 in this case.)
 	bool mesh_converted = false;
+	Transform3D applied_transform;
 
 	Ref<ArrayMesh> debug_mesh_cache;
 	class MeshInstance3D *debug_mesh = nullptr;
@@ -130,7 +131,8 @@ private:
 	bool _is_simulation_active() const;
 	void _prepare_physics_server();
 	bool _create_dynamic_mesh();
-	void _update_mesh_arrays_with_transform(Array &surface_arrays, uint32_t surface_format);
+	static Transform3D _get_relative_transform(const Transform3D &from_transform, const Transform3D &to_transform);
+	void _update_mesh_arrays_with_transform(Array &surface_arrays, uint32_t surface_format, const Transform3D &transform);
 
 protected:
 	bool _set(const StringName &p_name, const Variant &p_value);

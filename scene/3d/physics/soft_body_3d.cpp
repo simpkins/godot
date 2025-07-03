@@ -227,6 +227,22 @@ void SoftBody3D::BufferData::body_state_changed(PhysicsDirectSoftBodyState3D *p_
 	}
 }
 
+void SoftBody3D::BufferData::move_point(int index, const Vector3 &position) {
+	// TODO: need to examine mesh_to_physics and update all render vertices associated with this physics vertex.
+
+	// TODO: perform the ptrw() call in the caller scope, so we can do it once for the mesh rather than once per vertex.
+	uint8_t *buffer_ptr = buffer_curr->ptrw();
+	uint8_t *vertex_buffer = buffer_ptr + offset_vertices;
+	float as_floats[3] = { static_cast<float>(position.x), static_cast<float>(position.y), static_cast<float>(position.z) };
+	memcpy(vertex_buffer + (index * stride), as_floats, sizeof(as_floats));
+}
+
+void SoftBody3D::BufferData::commit_mesh_changes() {
+	uint8_t *buffer_ptr = buffer_curr->ptrw();
+	_recompute_normals(buffer_ptr);
+	RS::get_singleton()->mesh_surface_update_vertex_region(mesh, surface, 0, *buffer_curr);
+}
+
 void SoftBody3D::BufferData::_recompute_normals(uint8_t *p_buffer) {
 	const bool smooth_shading = shading_mode == SoftBody3D::SHADING_SMOOTH;
 	const int normal_buffer_size = smooth_shading ? physics_vertex_count : vertex_count;
@@ -486,14 +502,14 @@ void SoftBody3D::_notification(int p_what) {
 			_update_simulation_active();
 		} break;
 		case NOTIFICATION_INTERNAL_PROCESS: {
-			if (simulation_active && is_physics_interpolated_and_enabled()) {
-				buffer_data.do_physics_interpolation(Engine::get_singleton()->get_physics_interpolation_fraction());
+			if (simulation_active) {
+				_update_pinned_points();
+				if (is_physics_interpolated_and_enabled()) {
+					buffer_data.do_physics_interpolation(Engine::get_singleton()->get_physics_interpolation_fraction());
+				}
 			}
 		} break;
 		case NOTIFICATION_INTERNAL_PHYSICS_PROCESS: {
-			if (is_inside_tree()) {
-				_update_physics_server();
-			}
 		} break;
 		case NOTIFICATION_READY: {
 			if (!parent_collision_ignore.is_empty()) {
@@ -509,6 +525,7 @@ void SoftBody3D::_notification(int p_what) {
 		} break;
 		case NOTIFICATION_RESET_PHYSICS_INTERPOLATION: {
 			buffer_data.disable_physics_interpolation_until_next_update();
+#if 0
 			if (simulation_active) {
 				// We'll get NOTIFICATION_RESET_PHYSICS_INTERPOLATION if the user calls
 				// reset_physics_interpolation() explicitly, or if the global
@@ -518,6 +535,7 @@ void SoftBody3D::_notification(int p_what) {
 				// our set_process_internal() setting.
 				set_process_internal(is_physics_interpolated_and_enabled());
 			}
+#endif
 		} break;
 		case NOTIFICATION_VISIBILITY_CHANGED: {
 			_update_pickable();
@@ -625,9 +643,11 @@ void SoftBody3D::_bind_methods() {
 
 void SoftBody3D::_physics_interpolated_changed() {
 	buffer_data.disable_physics_interpolation_until_next_update();
+#if 0
 	if (simulation_active) {
 		set_process_internal(is_physics_interpolated_and_enabled());
 	}
+#endif
 	MeshInstance3D::_physics_interpolated_changed();
 }
 
@@ -641,15 +661,23 @@ PackedStringArray SoftBody3D::get_configuration_warnings() const {
 	return warnings;
 }
 
-void SoftBody3D::_update_physics_server() {
+void SoftBody3D::_update_pinned_points() {
 	_update_cache_pin_points_datas();
 	// Submit bone attachment
 	const int pinned_points_indices_size = pinned_points.size();
 	const PinnedPoint *r = pinned_points.ptr();
+	bool moved_points = false;
 	for (int i = 0; i < pinned_points_indices_size; ++i) {
 		if (r[i].spatial_attachment) {
-			PhysicsServer3D::get_singleton()->soft_body_move_point(physics_rid, r[i].point_index, r[i].spatial_attachment->get_global_transform().xform(r[i].offset));
+			Vector3 coord = r[i].spatial_attachment->get_global_transform().xform(r[i].offset);
+			PhysicsServer3D::get_singleton()->soft_body_move_point(physics_rid, r[i].point_index, coord);
+			buffer_data.move_point(r[i].point_index, coord);
+			moved_points = true;
 		}
+	}
+
+	if (moved_points) {
+		buffer_data.commit_mesh_changes();
 	}
 }
 
@@ -672,8 +700,11 @@ void SoftBody3D::_update_simulation_active() {
 	simulation_active = new_state;
 	if (simulation_active) {
 		PhysicsServer3D::get_singleton()->soft_body_set_mesh(physics_rid, mesh->get_rid());
+#if 0
 		set_process_internal(is_physics_interpolated_and_enabled());
-		set_physics_process_internal(true);
+#endif
+		set_process_internal(true);
+		set_physics_process_internal(false);
 	} else {
 		PhysicsServer3D::get_singleton()->soft_body_set_mesh(physics_rid, RID());
 		set_process_internal(false);

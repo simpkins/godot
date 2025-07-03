@@ -109,6 +109,9 @@ private:
 		void body_state_changed(PhysicsDirectSoftBodyState3D *p_state, bool p_interpolation_enabled);
 		void disable_physics_interpolation_until_next_update();
 
+		void move_point(int index, const Vector3 &position);
+		void commit_mesh_changes();
+
 		bool has_mesh() const {
 			return mesh != RID();
 		}
@@ -143,7 +146,7 @@ private:
 
 	void _update_pickable();
 
-	void _update_physics_server();
+	void _update_pinned_points();
 	void _do_physics_interpolation(real_t p_interpolation_fraction);
 	void _body_state_changed(PhysicsDirectSoftBodyState3D *p_state);
 

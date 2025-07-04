@@ -33,6 +33,11 @@
 #include "core/templates/rid_owner.h"
 #include "servers/physics_server_3d.h"
 
+#include "Jolt/Jolt.h"
+
+#include "Jolt/Core/Reference.h"
+#include "Jolt/Physics/SoftBody/SoftBodySharedSettings.h"
+
 class JoltArea3D;
 class JoltBody3D;
 class JoltJobSystem;
@@ -40,6 +45,10 @@ class JoltJoint3D;
 class JoltShape3D;
 class JoltSoftBody3D;
 class JoltSpace3D;
+
+namespace JPH {
+class SoftBodySharedSettings;
+}
 
 class JoltPhysicsServer3D final : public PhysicsServer3D {
 	GDCLASS(JoltPhysicsServer3D, PhysicsServer3D)
@@ -50,6 +59,7 @@ class JoltPhysicsServer3D final : public PhysicsServer3D {
 	mutable RID_PtrOwner<JoltArea3D, true> area_owner;
 	mutable RID_PtrOwner<JoltBody3D, true> body_owner{ 65536, 1048576 };
 	mutable RID_PtrOwner<JoltSoftBody3D, true> soft_body_owner;
+	mutable RID_Owner<JPH::Ref<JPH::SoftBodySharedSettings>, true> soft_body_settings_owner;
 	mutable RID_PtrOwner<JoltShape3D, true> shape_owner;
 	mutable RID_PtrOwner<JoltJoint3D, true> joint_owner;
 

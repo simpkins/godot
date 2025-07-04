@@ -314,6 +314,9 @@ public:
 
 	virtual void soft_body_set_mesh(RID p_body, RID p_mesh) override {}
 
+	virtual RID soft_body_settings_create(const SoftBody3DSettings *p_settings) override { return RID(); }
+	virtual void soft_body_set_settings(RID p_body, RID p_settings) override {}
+
 	virtual AABB soft_body_get_bounds(RID p_body) const override { return AABB(); }
 
 	virtual void soft_body_set_collision_layer(RID p_body, uint32_t p_layer) override {}

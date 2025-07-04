@@ -1301,6 +1301,15 @@
 				Sets whether the given soft body will be pickable when using object picking.
 			</description>
 		</method>
+		<method name="soft_body_set_settings">
+			<return type="void" />
+			<param index="0" name="body" type="RID" />
+			<param index="1" name="settings" type="RID" />
+			<description>
+				Sets the settings of the given soft body.
+				Note that it is safe to free a soft body settings RID after it has been assigned to a soft body, even before the soft body is freed.
+			</description>
+		</method>
 		<method name="soft_body_set_shrinking_factor">
 			<return type="void" />
 			<param index="0" name="body" type="RID" />
@@ -1360,6 +1369,14 @@
 			<param index="1" name="transform" type="Transform3D" />
 			<description>
 				Sets the global transform of the given soft body.
+			</description>
+		</method>
+		<method name="soft_body_settings_create">
+			<return type="RID" />
+			<param index="0" name="settings" type="SoftBody3DSettings" />
+			<description>
+				Creates a new soft body settings object and returns its internal [RID].
+				Soft body settings in the physics server are read-only once created.  A new settings object must be created to represent different settings.
 			</description>
 		</method>
 		<method name="soft_body_update_rendering_server">

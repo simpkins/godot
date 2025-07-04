@@ -347,8 +347,7 @@ void SoftBody3DSettings::set_auto_constraint_settings(const Ref<SoftBody3DAutoCo
 
 RID SoftBody3DSettings::get_rid() const {
 	if (!physics_rid.is_valid()) {
-		// TODO: Call soft_body_settings_create() once it has been added to the API
-		// physics_rid = PhysicsServer3D::get_singleton()->soft_body_settings_create(this);
+		physics_rid = PhysicsServer3D::get_singleton()->soft_body_settings_create(this);
 	}
 	return physics_rid;
 }

@@ -34,6 +34,7 @@
 
 #include "core/config/project_settings.h"
 #include "core/variant/typed_array.h"
+#include "scene/resources/3d/soft_body_3d_settings.h"
 
 void PhysicsServer3DRenderingServerHandler::set_vertex(int p_vertex_id, const Vector3 &p_vertex) {
 	GDVIRTUAL_CALL(_set_vertex, p_vertex_id, p_vertex);
@@ -873,6 +874,8 @@ void PhysicsServer3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("soft_body_get_space", "body"), &PhysicsServer3D::soft_body_get_space);
 
 	ClassDB::bind_method(D_METHOD("soft_body_set_mesh", "body", "mesh"), &PhysicsServer3D::soft_body_set_mesh);
+	ClassDB::bind_method(D_METHOD("soft_body_settings_create", "settings"), &PhysicsServer3D::soft_body_settings_create);
+	ClassDB::bind_method(D_METHOD("soft_body_set_settings", "body", "settings"), &PhysicsServer3D::soft_body_set_settings);
 
 	ClassDB::bind_method(D_METHOD("soft_body_get_bounds", "body"), &PhysicsServer3D::soft_body_get_bounds);
 

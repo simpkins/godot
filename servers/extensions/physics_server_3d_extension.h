@@ -34,7 +34,10 @@
 #include "core/object/script_language.h"
 #include "core/variant/native_ptr.h"
 #include "core/variant/typed_array.h"
+#include "scene/resources/3d/soft_body_3d_settings.h"
 #include "servers/physics_server_3d.h"
+
+class SoftBody3DSettings;
 
 class PhysicsDirectBodyState3DExtension : public PhysicsDirectBodyState3D {
 	GDCLASS(PhysicsDirectBodyState3DExtension, PhysicsDirectBodyState3D);
@@ -459,6 +462,9 @@ public:
 	EXBIND1RC(real_t, soft_body_get_drag_coefficient, RID)
 
 	EXBIND2(soft_body_set_mesh, RID, RID)
+
+	EXBIND1R(RID, soft_body_settings_create, const SoftBody3DSettings *)
+	EXBIND2(soft_body_set_settings, RID, RID)
 
 	EXBIND1RC(AABB, soft_body_get_bounds, RID)
 

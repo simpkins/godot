@@ -1202,6 +1202,16 @@ void GodotPhysicsServer3D::soft_body_set_mesh(RID p_body, RID p_mesh) {
 	soft_body->set_mesh(p_mesh);
 }
 
+RID GodotPhysicsServer3D::soft_body_settings_create(const SoftBody3DSettings *p_settings) {
+	// TODO
+	ERR_FAIL_V_MSG(RID(), "soft_body_settings_create() is not yet implemented for Godot physics");
+}
+
+void GodotPhysicsServer3D::soft_body_set_settings(RID p_body, RID p_settings) {
+	// TODO
+	ERR_FAIL_MSG("soft_body_set_settings() is not yet implemented for Godot physics");
+}
+
 AABB GodotPhysicsServer3D::soft_body_get_bounds(RID p_body) const {
 	GodotSoftBody3D *soft_body = soft_body_owner.get_or_null(p_body);
 	ERR_FAIL_NULL_V(soft_body, AABB());

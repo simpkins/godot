@@ -38,6 +38,7 @@
 constexpr int MAX_CONTACTS_REPORTED_3D_MAX = 4096;
 
 class PhysicsDirectSpaceState3D;
+class SoftBody3DSettings;
 template <typename T>
 class TypedArray;
 
@@ -596,6 +597,9 @@ public:
 	virtual RID soft_body_get_space(RID p_body) const = 0;
 
 	virtual void soft_body_set_mesh(RID p_body, RID p_mesh) = 0;
+
+	virtual RID soft_body_settings_create(const SoftBody3DSettings *p_settings) = 0;
+	virtual void soft_body_set_settings(RID p_body, RID p_settings) = 0;
 
 	virtual AABB soft_body_get_bounds(RID p_body) const = 0;
 

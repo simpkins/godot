@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="SoftBody3DEdge" inherits="Resource" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		A constraint between two 3D soft body vertices.
+	</brief_description>
+	<description>
+		Constrains two vertices to attempt to stay within the specified distance of each other.
+	</description>
+	<tutorials>
+	</tutorials>
+	<members>
+		<member name="compliance" type="float" setter="set_compliance" getter="get_compliance" default="0.0">
+			How flexible the edge is while attempting to maintain its rest length.  This is is the inverse of its [url=https://en.wikipedia.org/wiki/Stiffness]stiffness[/url].
+			Note that this is correlated to the [member stiffness_coefficient] property: changing the [member compliance] will change the reported [member stiffness_coefficient] and vice-versa.  Jolt physics engine uses the compliance, while Godot physics uses the stiffness_coefficient.
+		</member>
+		<member name="rest_length" type="float" setter="set_rest_length" getter="get_rest_length" default="1.0">
+			During simulation, forces will be applied to each vertex attempting to always restore the edge to its rest length.
+		</member>
+		<member name="stiffness_coefficient" type="float" setter="set_stiffness_coefficient" getter="get_stiffness_coefficient" default="1.0">
+			The stiffness of the edge, as a number from 0.0 to 1.0.
+			Note that this is correlated to the [member compliance] property: changing the [member stiffness_coefficient] will change the reported [member compliance] and vice-versa.  Jolt physics engine uses the compliance, while Godot physics uses the stiffness_coefficient.
+		</member>
+		<member name="vertices" type="Vector2i" setter="set_vertices" getter="get_vertices" default="Vector2i(0, 0)">
+			The indices of the two vertices that this constraint affects.
+		</member>
+	</members>
+</class>

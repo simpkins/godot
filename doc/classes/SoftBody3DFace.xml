@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="SoftBody3DFace" inherits="Resource" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		A triangular face consisting in a 3D soft body simulation.
+	</brief_description>
+	<description>
+		Defines a face in a 3D soft body simulation. Wind forces and the body's internal pressure may operate on its faces, although there is some variation in how this is implemented by each physics server.
+		[member SoftBody3DSettings.auto_constraint_settings] can also be used to automatically create edge constraints from the defined faces.
+	</description>
+	<tutorials>
+	</tutorials>
+	<members>
+		<member name="vertices" type="Vector3i" setter="set_vertices" getter="get_vertices" default="Vector3i(0, 0, 0)">
+			The indices of the three vertices that this constraint affects.
+			A clockwise [url=https://learnopengl.com/Advanced-OpenGL/Face-culling]winding order[/url] is used to specify the outside vs the inside of the face, which may affect the simulation of the body's internal pressure on the face.
+		</member>
+	</members>
+</class>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="SoftBody3DVertex" inherits="Resource" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Settings for a 3D soft body vertex.
+	</brief_description>
+	<description>
+		Defines the initial position and mass of a 3D soft body vertex.
+	</description>
+	<tutorials>
+	</tutorials>
+	<members>
+		<member name="inverse_mass" type="float" setter="set_inverse_mass" getter="get_inverse_mass" default="1.0">
+			The inverse mass of the vertex: 1.0 divided by the vertex mass.  Setting this to 0 defines a vertex with infinite mass, which is used to create kinematic vertices that will never be moved by the physics simulation.  This is typically used to define pinned points that are moved by game logic rather than physics simulation.  The total mass of a soft body is the sum of all its vertex masses.
+		</member>
+		<member name="position" type="Vector3" setter="set_position" getter="get_position" default="Vector3(0, 0, 0)">
+			The initial position of the vertex.
+		</member>
+		<member name="velocity" type="Vector3" setter="set_velocity" getter="get_velocity" default="Vector3(0, 0, 0)">
+			The initial velocity of the vertex.
+		</member>
+	</members>
+</class>

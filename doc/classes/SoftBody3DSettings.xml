@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="SoftBody3DSettings" inherits="Resource" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		A [Resource] that contains initial settings for a 3D soft body moved by a physics simulation.
+	</brief_description>
+	<description>
+		SoftBody3DSettings contains geometry and constraint information that defines the initial state for a 3D soft body.  For instance, this information includes the initial vertex coordinates, edge constraints between vertices, faces for pressure and wind simulation, and other data.
+		Not all [PhysicsServer3D] implementations support the exact same soft body functionality.  There may be some variation between how servers interpret different settings, and some servers may not support all settings.  Some physics servers may also define their own soft body settings subclasses to expose additional constraint types specific to that physics implementation.
+		A single SoftBody3DSettings object may be used to create multiple simulated soft body instances, allowing you to create many different bodies without needing to re-define the settings for each one.  [method PhysicsServer3D.soft_body_set_transform] can be used to give each instance a separate location in the world.
+		Note that SoftBody3DSettings only defines the initial state for a soft body.  Once it begins simulating, its vertex positions will be updated automatically by the physics server.  Changing properties on an existing SoftBody3DSettings object will not affect any existing soft bodies using the settings object.  Changing settings on an existing SoftBody3DSettings will also change its RID: making any changes to a SoftBody3DSettings object will free the old RID, and a new RID will be allocated the next time [method Resource.get_rid] is called.
+	</description>
+	<tutorials>
+	</tutorials>
+	<members>
+		<member name="auto_constraint_settings" type="SoftBody3DAutoConstraintSettings" setter="set_auto_constraint_settings" getter="get_auto_constraint_settings">
+			Settings that control whether additional constraints should be automatically created by the physics server.
+			If this is set, edge constraints will be automatically defined based on the edges around each face.  Exactly what constraints are created and how they are configured may vary based on the current physics server implementation.  For instance, some servers may add additional bend constraints or diagonal shear constraints across the diagonal of near-quadrilateral face pairs.
+			If this property is null, the other constraint properties will be used as-is, and no automatic constraints will be added.
+		</member>
+		<member name="edges" type="Array" setter="set_edges" getter="get_edges" default="[]">
+			Defines edge constraints between vertices.
+		</member>
+		<member name="faces" type="Array" setter="set_faces" getter="get_faces" default="[]">
+			Defines face constraints.
+		</member>
+		<member name="vertices" type="Array" setter="set_vertices" getter="get_vertices" default="[]">
+			Defines the initial vertex positions and masses.
+		</member>
+	</members>
+</class>

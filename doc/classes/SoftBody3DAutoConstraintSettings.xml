@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="SoftBody3DAutoConstraintSettings" inherits="Resource" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Settings for automatically creating soft body constraints from vertex and face data.
+	</brief_description>
+	<description>
+	</description>
+	<tutorials>
+	</tutorials>
+	<members>
+		<member name="compliance" type="float" setter="set_compliance" getter="get_compliance" default="0.0">
+			The compliance setting for each automatically created edge constraint.
+			Note that this is correlated to the [member stiffness_coefficient] property: changing the [member compliance] will change the reported [member stiffness_coefficient] and vice-versa.  Jolt physics engine uses the compliance, while Godot physics uses the stiffness_coefficient.
+		</member>
+		<member name="edge_length_multiplier" type="float" setter="set_edge_length_multiplier" getter="get_edge_length_multiplier" default="1.0">
+			A multiplier to apply to each edge's rest length.
+		</member>
+		<member name="stiffness_coefficient" type="float" setter="set_stiffness_coefficient" getter="get_stiffness_coefficient" default="1.0">
+			The stiffness coefficient for each automatically created edge constraint.
+			Note that this is correlated to the [member compliance] property: changing the [member stiffness_coefficient] will change the reported [member compliance] and vice-versa.  Jolt physics engine uses the compliance, while Godot physics uses the stiffness_coefficient.
+		</member>
+	</members>
+</class>

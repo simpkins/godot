@@ -345,6 +345,7 @@
 #include "scene/resources/3d/cylinder_shape_3d.h"
 #include "scene/resources/3d/height_map_shape_3d.h"
 #include "scene/resources/3d/separation_ray_shape_3d.h"
+#include "scene/resources/3d/soft_body_3d_settings.h"
 #include "scene/resources/3d/sphere_shape_3d.h"
 #include "scene/resources/3d/world_boundary_shape_3d.h"
 #endif // PHYSICS_3D_DISABLED
@@ -676,6 +677,11 @@ void register_scene_types() {
 	GDREGISTER_CLASS(PhysicalBoneSimulator3D);
 	GDREGISTER_CLASS(PhysicalBone3D);
 	GDREGISTER_CLASS(SoftBody3D);
+	GDREGISTER_CLASS(SoftBody3DSettings);
+	GDREGISTER_CLASS(SoftBody3DAutoConstraintSettings);
+	GDREGISTER_CLASS(SoftBody3DEdge);
+	GDREGISTER_CLASS(SoftBody3DFace);
+	GDREGISTER_CLASS(SoftBody3DVertex);
 	GDREGISTER_ABSTRACT_CLASS(PhysicsDirectSoftBodyState3D);
 #endif // PHYSICS_3D_DISABLED
 

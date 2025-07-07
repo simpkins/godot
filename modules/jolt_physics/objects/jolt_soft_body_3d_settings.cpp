@@ -40,6 +40,119 @@ JPH::Float3 to_float3(const Vector3 &v) {
 }
 } //namespace
 
+void JoltSoftBody3DVolume::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_vertices", "vertices"), &JoltSoftBody3DVolume::set_vertices);
+	ClassDB::bind_method(D_METHOD("get_vertices"), &JoltSoftBody3DVolume::get_vertices);
+	ClassDB::bind_method(D_METHOD("set_six_rest_volume", "six_rest_volume"), &JoltSoftBody3DVolume::set_six_rest_volume);
+	ClassDB::bind_method(D_METHOD("get_six_rest_volume"), &JoltSoftBody3DVolume::get_six_rest_volume);
+	ClassDB::bind_method(D_METHOD("set_compliance", "compliance"), &JoltSoftBody3DVolume::set_compliance);
+	ClassDB::bind_method(D_METHOD("get_compliance"), &JoltSoftBody3DVolume::get_compliance);
+
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR4I, "vertices"), "set_vertices", "get_vertices");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "six_rest_volume"), "set_six_rest_volume", "get_six_rest_volume");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "compliance"), "set_compliance", "get_compliance");
+}
+
+void JoltSoftBody3DVolume::set_vertices(Vector4i p_vertices) {
+	if (p_vertices != vertices) {
+		vertices = p_vertices;
+		emit_changed();
+	}
+}
+
+Vector4i JoltSoftBody3DVolume::get_vertices() const {
+	return vertices;
+}
+
+void JoltSoftBody3DVolume::set_six_rest_volume(float p_six_volume) {
+	if (p_six_volume != six_rest_volume) {
+		six_rest_volume = p_six_volume;
+		emit_changed();
+	}
+}
+
+float JoltSoftBody3DVolume::get_six_rest_volume() const {
+	return six_rest_volume;
+}
+
+void JoltSoftBody3DVolume::set_compliance(float p_compliance) {
+	if (p_compliance != compliance) {
+		compliance = p_compliance;
+		emit_changed();
+	}
+}
+
+float JoltSoftBody3DVolume::get_compliance() const {
+	return compliance;
+}
+
+JoltSoftBody3DVolume::JoltSoftBody3DVolume() = default;
+
+JoltSoftBody3DVolume::~JoltSoftBody3DVolume() = default;
+
+void JoltSoftBody3DSettings::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_volumes", "volumes"), &JoltSoftBody3DSettings::set_volumes);
+	ClassDB::bind_method(D_METHOD("get_volumes"), &JoltSoftBody3DSettings::get_volumes);
+
+	ClassDB::bind_method(D_METHOD("calculate_volume_constraint_volumes", "multiplier"),
+			&JoltSoftBody3DSettings::calculate_volume_constraint_volumes, DEFVAL(1.0));
+
+	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "volumes", PROPERTY_HINT_ARRAY_TYPE, MAKE_RESOURCE_TYPE_HINT("JoltSoftBody3DVolume")), "set_volumes", "get_volumes");
+}
+
+Array JoltSoftBody3DSettings::get_volumes() const {
+	return volumes;
+}
+
+void JoltSoftBody3DSettings::set_volumes(const Array &p_volumes) {
+	const int num_invalid_elements = _set_array_helper<JoltSoftBody3DVolume>(volumes, p_volumes);
+	ERR_FAIL_COND_MSG(num_invalid_elements != 0, "JoltSoftBody3DSettings: invalid elements present in volume array");
+}
+
+JoltSoftBody3DSettings::JoltSoftBody3DSettings() = default;
+
+JoltSoftBody3DSettings::~JoltSoftBody3DSettings() = default;
+
+void JoltSoftBody3DSettings::calculate_volume_constraint_volumes(float multiplier) {
+	const Array body_vertices = get_vertices();
+	const int vertex_count = body_vertices.size();
+
+	auto get_vertex = [&](int volume_idx, int32_t vidx, Vector3 &r_vertex) {
+		ERR_FAIL_COND_V_MSG((vidx < 0 || vidx >= vertex_count), false,
+				vformat("volume %d contains an invalid vertex index %d", volume_idx, vidx));
+		const Variant &elem = body_vertices[vidx];
+		const Ref<SoftBody3DVertex> &vertex = elem;
+		ERR_FAIL_COND_V_MSG(vertex.is_valid(), false,
+				vformat("volume %d refers to invalid vertex %d", volume_idx, vidx));
+		r_vertex = vertex->get_position();
+		return true;
+	};
+
+	const int volume_count = volumes.size();
+	for (int volume_idx = 0; volume_idx < volume_count; ++volume_idx) {
+		const Variant &elem = volumes[volume_idx];
+		const Ref<JoltSoftBody3DVolume> &volume = elem;
+		if (!volume.is_valid()) {
+			continue;
+		}
+
+		Vector3 v0;
+		Vector3 v1;
+		Vector3 v2;
+		Vector3 v3;
+		const Vector4i &volume_verts = volume->get_vertices();
+		if (!(get_vertex(volume_idx, volume_verts.x, v0) && get_vertex(volume_idx, volume_verts.y, v1) &&
+					get_vertex(volume_idx, volume_verts.z, v2) && get_vertex(volume_idx, volume_verts.w, v3))) {
+			continue;
+		}
+
+		Vector3 dv1 = v1 - v0;
+		Vector3 dv2 = v2 - v0;
+		Vector3 dv3 = v3 - v0;
+		volume->set_six_rest_volume(dv1.cross(dv2).dot(dv3) * multiplier);
+	}
+}
+
 JPH::Ref<JPH::SoftBodySharedSettings> JoltSoftBody3DSettings::convert_settings(const SoftBody3DSettings *p_settings) {
 	ERR_FAIL_NULL_V(p_settings, nullptr);
 
@@ -90,6 +203,27 @@ JPH::Ref<JPH::SoftBodySharedSettings> JoltSoftBody3DSettings::convert_settings(c
 
 		// Jolt uses a different winding order, so we swap the indices to account for that.
 		physics_faces.emplace_back(face_verts.z, face_verts.y, face_verts.x);
+	}
+
+	const JoltSoftBody3DSettings *p_jolt_settings = Object::cast_to<JoltSoftBody3DSettings>(p_settings);
+	if (p_jolt_settings != nullptr) {
+		Array settings_volumes = p_jolt_settings->get_volumes();
+		JPH::Array<JPH::SoftBodySharedSettings::Volume> &physics_volumes = settings->mVolumeConstraints;
+		for (const Variant &elem : settings_volumes) {
+			const Ref<JoltSoftBody3DVolume> &volume = elem;
+			if (!volume.is_valid()) {
+				continue;
+			}
+
+			const Vector4i &volume_verts = volume->get_vertices();
+			if (volume_verts.x == volume_verts.y || volume_verts.x == volume_verts.z || volume_verts.x == volume_verts.w ||
+					volume_verts.y == volume_verts.z || volume_verts.y == volume_verts.w || volume_verts.z == volume_verts.w) {
+				continue; // Skip degenerate volumes
+			}
+
+			physics_volumes.emplace_back(volume_verts.z, volume_verts.y, volume_verts.x, volume_verts.w, volume->get_compliance());
+			physics_volumes.back().mSixRestVolume = volume->get_six_rest_volume();
+		}
 	}
 
 	Ref<SoftBody3DAutoConstraintSettings> auto_constraint_settings = p_settings->get_auto_constraint_settings();

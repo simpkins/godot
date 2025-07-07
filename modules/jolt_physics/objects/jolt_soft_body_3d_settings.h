@@ -30,13 +30,52 @@
 
 #pragma once
 
+#include "scene/resources/3d/soft_body_3d_settings.h"
+
 #include "Jolt/Jolt.h"
 
 #include "Jolt/Physics/SoftBody/SoftBodySharedSettings.h"
 
-class SoftBody3DSettings;
+class JoltSoftBody3DVolume : public Resource {
+	GDCLASS(JoltSoftBody3DVolume, Resource);
 
-class JoltSoftBody3DSettings {
+	Vector4i vertices;
+	float six_rest_volume = 1.0f;
+	float compliance = 0.0f;
+
+protected:
+	static void _bind_methods();
+
 public:
+	JoltSoftBody3DVolume();
+	~JoltSoftBody3DVolume();
+
+	void set_vertices(Vector4i p_vertices);
+	Vector4i get_vertices() const;
+
+	void set_six_rest_volume(float p_six_volume);
+	float get_six_rest_volume() const;
+
+	void set_compliance(float p_compliance);
+	float get_compliance() const;
+};
+
+class JoltSoftBody3DSettings : public SoftBody3DSettings {
+	GDCLASS(JoltSoftBody3DSettings, SoftBody3DSettings)
+
+	Array volumes; // Array of JoltSoftBody3DVolume
+
+protected:
+	static void _bind_methods();
+
+public:
+	JoltSoftBody3DSettings();
+	~JoltSoftBody3DSettings();
+
+	Array get_volumes() const;
+	void set_volumes(const Array &p_volumes);
+
+	void calculate_volume_constraint_volumes(float multiplier = 1.0f);
+
 	static JPH::Ref<JPH::SoftBodySharedSettings> convert_settings(const SoftBody3DSettings *p_settings);
 };

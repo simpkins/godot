@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="JoltSoftBody3DSettings" inherits="SoftBody3DSettings" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Soft body settings with additional settings for use with the Jolt physics engine.
+	</brief_description>
+	<description>
+		A subclass of [SoftBody3DSettings] that contains additional settings for Jolt's soft body functionality.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="calculate_volume_constraint_volumes">
+			<return type="void" />
+			<param index="0" name="multiplier" type="float" default="1.0" />
+			<description>
+				Set the rest volume of each volume constraint based on the rest vertex positions.
+				Each volume's rest volume will be multiplied by [param multiplier].
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="volumes" type="Array" setter="set_volumes" getter="get_volumes" default="[]">
+		</member>
+	</members>
+</class>

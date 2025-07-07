@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="JoltSoftBody3DVolume" inherits="Resource" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		A volume constraint on a 3D soft body tetrahedron.
+	</brief_description>
+	<description>
+		Constrains a tetrahedron to try and keep a given volume.
+	</description>
+	<tutorials>
+	</tutorials>
+	<members>
+		<member name="compliance" type="float" setter="set_compliance" getter="get_compliance" default="0.0">
+			How flexible the volume is when attempting to maintain its rest volume.
+		</member>
+		<member name="six_rest_volume" type="float" setter="set_six_rest_volume" getter="get_six_rest_volume" default="1.0">
+			Six times the rest volume of the edge.
+			This is stored as six times the volume simply for ease of computation and use inside the physics engine.
+		</member>
+		<member name="vertices" type="Vector4i" setter="set_vertices" getter="get_vertices" default="Vector4i(0, 0, 0, 0)">
+			The indices of the four tetrahedron vertices in the [SoftBody3DSettings] vertex array.
+		</member>
+	</members>
+</class>

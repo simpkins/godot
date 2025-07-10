@@ -1131,6 +1131,14 @@ void GodotSpace3D::body_remove_from_state_query_list(SelfList<GodotBody3D> *p_bo
 	state_query_list.remove(p_body);
 }
 
+void GodotSpace3D::soft_body_add_to_state_query_list(SelfList<GodotSoftBody3D> *p_body) {
+	soft_body_query_list.add(p_body);
+}
+
+void GodotSpace3D::soft_body_remove_from_state_query_list(SelfList<GodotSoftBody3D> *p_body) {
+	soft_body_query_list.remove(p_body);
+}
+
 void GodotSpace3D::area_add_to_monitor_query_list(SelfList<GodotArea3D> *p_area) {
 	monitor_query_list.add(p_area);
 }
@@ -1174,6 +1182,12 @@ void GodotSpace3D::call_queries() {
 		GodotArea3D *a = monitor_query_list.first()->self();
 		monitor_query_list.remove(monitor_query_list.first());
 		a->call_queries();
+	}
+
+	while (soft_body_query_list.first()) {
+		GodotSoftBody3D *b = soft_body_query_list.first()->self();
+		soft_body_query_list.remove(soft_body_query_list.first());
+		b->call_queries();
 	}
 }
 

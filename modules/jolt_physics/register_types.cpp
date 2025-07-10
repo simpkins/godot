@@ -33,6 +33,7 @@
 #include "jolt_globals.h"
 #include "jolt_physics_server_3d.h"
 #include "jolt_project_settings.h"
+#include "objects/jolt_physics_direct_soft_body_state_3d.h"
 
 #include "servers/physics_server_3d_wrap_mt.h"
 
@@ -54,6 +55,7 @@ void initialize_jolt_physics_module(ModuleInitializationLevel p_level) {
 	}
 
 	jolt_initialize();
+	ClassDB::register_class<JoltPhysicsDirectSoftBodyState3D>();
 	PhysicsServer3DManager::get_singleton()->register_server("Jolt Physics", callable_mp_static(&create_jolt_physics_server));
 	JoltProjectSettings::register_settings();
 }

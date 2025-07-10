@@ -30,6 +30,7 @@
 
 #include "register_types.h"
 
+#include "godot_physics_direct_soft_body_state_3d.h"
 #include "godot_physics_server_3d.h"
 #include "servers/physics_server_3d.h"
 #include "servers/physics_server_3d_wrap_mt.h"
@@ -50,6 +51,7 @@ void initialize_godot_physics_3d_module(ModuleInitializationLevel p_level) {
 	if (p_level != MODULE_INITIALIZATION_LEVEL_SERVERS) {
 		return;
 	}
+	ClassDB::register_class<GodotPhysicsDirectSoftBodyState3D>();
 	PhysicsServer3DManager::get_singleton()->register_server("GodotPhysics3D", callable_mp_static(_createGodotPhysics3DCallback));
 	PhysicsServer3DManager::get_singleton()->set_default_server("GodotPhysics3D");
 }

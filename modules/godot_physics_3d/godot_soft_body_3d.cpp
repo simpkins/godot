@@ -31,6 +31,7 @@
 #include "godot_soft_body_3d.h"
 
 #include "godot_physics_direct_soft_body_state_3d.h"
+#include "godot_soft_body_3d_settings.h"
 #include "godot_space_3d.h"
 
 #include "core/math/geometry_3d.h"
@@ -135,13 +136,14 @@ void GodotSoftBody3D::set_space(GodotSpace3D *p_space) {
 void GodotSoftBody3D::set_mesh(RID p_mesh) {
 	destroy();
 
-	soft_mesh = p_mesh;
-
-	if (soft_mesh.is_null()) {
+	if (p_mesh.is_null()) {
 		return;
 	}
 
-	Array arrays = RenderingServer::get_singleton()->mesh_surface_get_arrays(soft_mesh, 0);
+	// TODO: calling RenderingServer::mesh_surface_get_arrays() from the physics thread
+	// is not safe and can deadlock.  This method blocks waiting on the main thread to
+	// return data, but the main thread may be blocked waiting on PhysicsServer3D::sync()
+	Array arrays = RenderingServer::get_singleton()->mesh_surface_get_arrays(p_mesh, 0);
 	ERR_FAIL_COND(arrays.is_empty());
 
 	const Vector<int> &indices = arrays[RenderingServer::ARRAY_INDEX];
@@ -153,20 +155,43 @@ void GodotSoftBody3D::set_mesh(RID p_mesh) {
 	if (!success) {
 		destroy();
 	}
+	settings_initialized = true;
 }
 
-void GodotSoftBody3D::update_rendering_server(PhysicsServer3DRenderingServerHandler *p_rendering_server_handler) {
-	if (soft_mesh.is_null()) {
+void GodotSoftBody3D::set_settings(const GodotSoftBody3DSettings *p_settings) {
+	destroy();
+	if (p_settings == nullptr) {
 		return;
 	}
 
-	const uint32_t vertex_count = map_visual_to_physics.size();
-	for (uint32_t i = 0; i < vertex_count; ++i) {
-		const uint32_t node_index = map_visual_to_physics[i];
-		const Node &node = nodes[node_index];
+	const bool success = create_from_settings(*p_settings);
+	if (!success) {
+		destroy();
+	}
+	settings_initialized = true;
+}
 
-		p_rendering_server_handler->set_vertex(i, node.x);
-		p_rendering_server_handler->set_normal(i, node.n);
+void GodotSoftBody3D::update_rendering_server(PhysicsServer3DRenderingServerHandler *p_rendering_server_handler) {
+	if (!settings_initialized) {
+		return;
+	}
+
+	if (map_visual_to_physics.is_empty()) {
+		const uint32_t vertex_count = nodes.size();
+		for (uint32_t node_index = 0; node_index < vertex_count; ++node_index) {
+			const Node &node = nodes[node_index];
+			p_rendering_server_handler->set_vertex(node_index, node.x);
+			p_rendering_server_handler->set_normal(node_index, node.n);
+		}
+	} else {
+		const uint32_t vertex_count = map_visual_to_physics.size();
+		for (uint32_t i = 0; i < vertex_count; ++i) {
+			const uint32_t node_index = map_visual_to_physics[i];
+			const Node &node = nodes[node_index];
+
+			p_rendering_server_handler->set_vertex(i, node.x);
+			p_rendering_server_handler->set_normal(i, node.n);
+		}
 	}
 
 	p_rendering_server_handler->set_aabb(bounds);
@@ -293,7 +318,7 @@ void GodotSoftBody3D::update_link_constants() {
 }
 
 void GodotSoftBody3D::apply_nodes_transform(const Transform3D &p_transform) {
-	if (soft_mesh.is_null()) {
+	if (!settings_initialized) {
 		return;
 	}
 
@@ -321,12 +346,12 @@ void GodotSoftBody3D::apply_nodes_transform(const Transform3D &p_transform) {
 Vector3 GodotSoftBody3D::get_vertex_position(int p_index) const {
 	ERR_FAIL_COND_V(p_index < 0, Vector3());
 
-	if (soft_mesh.is_null()) {
+	if (!settings_initialized) {
 		return Vector3();
 	}
 
-	ERR_FAIL_COND_V(p_index >= (int)map_visual_to_physics.size(), Vector3());
-	uint32_t node_index = map_visual_to_physics[p_index];
+	uint32_t node_index;
+	ERR_FAIL_COND_V(_get_node_index(p_index, node_index), Vector3());
 
 	ERR_FAIL_COND_V(node_index >= nodes.size(), Vector3());
 	return nodes[node_index].x;
@@ -335,12 +360,12 @@ Vector3 GodotSoftBody3D::get_vertex_position(int p_index) const {
 void GodotSoftBody3D::set_vertex_position(int p_index, const Vector3 &p_position) {
 	ERR_FAIL_COND(p_index < 0);
 
-	if (soft_mesh.is_null()) {
+	if (!settings_initialized) {
 		return;
 	}
 
-	ERR_FAIL_COND(p_index >= (int)map_visual_to_physics.size());
-	uint32_t node_index = map_visual_to_physics[p_index];
+	uint32_t node_index;
+	ERR_FAIL_COND(_get_node_index(p_index, node_index));
 
 	ERR_FAIL_COND(node_index >= nodes.size());
 	Node &node = nodes[node_index];
@@ -357,10 +382,9 @@ void GodotSoftBody3D::pin_vertex(int p_index) {
 
 	pinned_vertices.push_back(p_index);
 
-	if (!soft_mesh.is_null()) {
-		ERR_FAIL_COND(p_index >= (int)map_visual_to_physics.size());
-		uint32_t node_index = map_visual_to_physics[p_index];
-
+	if (settings_initialized) {
+		uint32_t node_index;
+		ERR_FAIL_COND(_get_node_index(p_index, node_index));
 		ERR_FAIL_COND(node_index >= nodes.size());
 		Node &node = nodes[node_index];
 		node.im = 0.0;
@@ -375,10 +399,9 @@ void GodotSoftBody3D::unpin_vertex(int p_index) {
 		if (p_index == pinned_vertices[i]) {
 			pinned_vertices.remove_at(i);
 
-			if (!soft_mesh.is_null()) {
-				ERR_FAIL_COND(p_index >= (int)map_visual_to_physics.size());
-				uint32_t node_index = map_visual_to_physics[p_index];
-
+			if (settings_initialized) {
+				uint32_t node_index;
+				ERR_FAIL_COND(_get_node_index(p_index, node_index));
 				ERR_FAIL_COND(node_index >= nodes.size());
 				real_t inv_node_mass = nodes.size() * inv_total_mass;
 
@@ -392,15 +415,13 @@ void GodotSoftBody3D::unpin_vertex(int p_index) {
 }
 
 void GodotSoftBody3D::unpin_all_vertices() {
-	if (!soft_mesh.is_null()) {
+	if (settings_initialized) {
 		real_t inv_node_mass = nodes.size() * inv_total_mass;
 		uint32_t pinned_count = pinned_vertices.size();
 		for (uint32_t i = 0; i < pinned_count; ++i) {
 			int pinned_vertex = pinned_vertices[i];
-
-			ERR_CONTINUE(pinned_vertex >= (int)map_visual_to_physics.size());
-			uint32_t node_index = map_visual_to_physics[pinned_vertex];
-
+			uint32_t node_index;
+			ERR_CONTINUE(_get_node_index(pinned_vertex, node_index));
 			ERR_CONTINUE(node_index >= nodes.size());
 			Node &node = nodes[node_index];
 			node.im = inv_node_mass;
@@ -498,6 +519,104 @@ void GodotSoftBody3D::get_face_points(uint32_t p_face_index, Vector3 &r_point_1,
 Vector3 GodotSoftBody3D::get_face_normal(uint32_t p_face_index) const {
 	ERR_FAIL_UNSIGNED_INDEX_V(p_face_index, faces.size(), Vector3());
 	return faces[p_face_index].normal;
+}
+
+bool GodotSoftBody3D::_get_node_index(int p_index, uint32_t &r_index) const {
+	// map_visual_to_physics is only set if create_from_trimesh() is used, in which
+	// case input mesh indices need to be converted to physics indices.
+	// If create_from_settings() are used, the input indices are physics indices.
+	if (map_visual_to_physics.is_empty()) {
+		r_index = p_index;
+	} else {
+		ERR_FAIL_COND_V(p_index < 0, false);
+		ERR_FAIL_COND_V(p_index >= (int)map_visual_to_physics.size(), false);
+		r_index = map_visual_to_physics[p_index];
+	}
+	return true;
+}
+
+bool GodotSoftBody3D::create_from_settings(const GodotSoftBody3DSettings &p_settings) {
+	// Create nodes from vertices.
+	const LocalVector<GodotSoftBody3DSettings::Vertex> &vertices = p_settings.vertices;
+	uint32_t vertex_count = vertices.size();
+	nodes.resize(vertex_count);
+	Vector3 leaf_size = Vector3(collision_margin, collision_margin, collision_margin) * 2.0;
+	for (uint32_t vidx = 0; vidx < vertex_count; ++vidx) {
+		Node &node = nodes[vidx];
+		node.index = vidx;
+		node.s = vertices[vidx].position;
+		node.x = node.s;
+		node.q = node.s;
+		node.v = vertices[vidx].velocity;
+		node.im = vertices[vidx].inverse_mass;
+
+		AABB node_aabb(node.x, leaf_size);
+		node.leaf = node_tree.insert(node_aabb, &node);
+	}
+
+	// Create links
+	const LocalVector<GodotSoftBody3DSettings::Edge> &edges = p_settings.edges;
+	uint32_t edge_count = edges.size();
+	links.resize(edge_count);
+	for (uint32_t eidx = 0; eidx < edge_count; ++eidx) {
+		const GodotSoftBody3DSettings::Edge &edge = edges[eidx];
+		Link &link = links[eidx];
+		link.n[0] = &nodes[edge.v0];
+		link.n[1] = &nodes[edge.v1];
+		link.rl = edge.rest_length;
+		link.c1 = link.rl * link.rl;
+		link.c0 = (link.n[0]->im + link.n[1]->im) * edge.inv_linear_stiffness;
+	}
+
+	// Create faces
+	const LocalVector<GodotSoftBody3DSettings::Face> &settings_faces = p_settings.faces;
+	uint32_t face_count = settings_faces.size();
+	links.resize(face_count);
+	for (uint32_t fidx = 0; fidx < face_count; ++fidx) {
+		const GodotSoftBody3DSettings::Face &settings_face = settings_faces[fidx];
+		Face &face = faces[fidx];
+		face.index = fidx;
+		face.n[0] = &nodes[settings_face.v0];
+		face.n[1] = &nodes[settings_face.v1];
+		face.n[2] = &nodes[settings_face.v2];
+	}
+
+	bool auto_create_links = false;
+	if (auto_create_links) {
+		// Auto-create links from faces if requested
+		LocalVector<bool> chks;
+		chks.resize(vertex_count * vertex_count);
+		memset(chks.ptr(), 0, chks.size() * sizeof(bool));
+		for (uint32_t fidx = 0; fidx < face_count; ++fidx) {
+			const GodotSoftBody3DSettings::Face &settings_face = settings_faces[fidx];
+			const uint32_t idx[] = { settings_face.v0, settings_face.v1, settings_face.v2 };
+			for (int j = 2, k = 0; k < 3; j = k++) {
+				int chk = idx[k] * vertex_count + idx[j];
+				if (!chks[chk]) {
+					chks[chk] = true;
+					int inv_chk = idx[j] * vertex_count + idx[k];
+					chks[inv_chk] = true;
+
+					append_link(idx[j], idx[k]);
+				}
+			}
+		}
+
+		generate_bending_constraints(2);
+
+		reset_link_rest_lengths();
+		update_link_constants();
+	}
+
+	// TODO: Set pinned nodes.
+
+	reoptimize_link_order();
+
+	update_area();
+	update_normals_and_centroids();
+	update_bounds();
+
+	return true;
 }
 
 bool GodotSoftBody3D::create_from_trimesh(const Vector<int> &p_indices, const Vector<Vector3> &p_vertices) {
@@ -1197,11 +1316,11 @@ void GodotSoftBody3D::query_ray(const Vector3 &p_from, const Vector3 &p_to, Godo
 
 void GodotSoftBody3D::call_queries() {
 	if (body_state_callback.is_valid()) {
-		const uint32_t vertex_count = map_visual_to_physics.size();
+		const uint32_t vertex_count = map_visual_to_physics.is_empty() ? nodes.size() : map_visual_to_physics.size();
 		callback_vertices.resize(vertex_count);
 		Vector3 *v = callback_vertices.ptrw();
 		for (uint32_t i = 0; i < vertex_count; ++i) {
-			const uint32_t node_index = map_visual_to_physics[i];
+			const uint32_t node_index = map_visual_to_physics.is_empty() ? i : map_visual_to_physics[i];
 			v[i] = nodes[node_index].x;
 		}
 
@@ -1266,7 +1385,7 @@ void GodotSoftBody3D::deinitialize_shape() {
 }
 
 void GodotSoftBody3D::destroy() {
-	soft_mesh = RID();
+	settings_initialized = false;
 
 	map_visual_to_physics.clear();
 

@@ -32,6 +32,8 @@
 
 #include "godot_body_direct_state_3d.h"
 #include "godot_broad_phase_3d_bvh.h"
+#include "godot_soft_body_3d.h"
+#include "godot_soft_body_3d_settings.h"
 #include "joints/godot_cone_twist_joint_3d.h"
 #include "joints/godot_generic_6dof_joint_3d.h"
 #include "joints/godot_hinge_joint_3d.h"
@@ -1203,13 +1205,24 @@ void GodotPhysicsServer3D::soft_body_set_mesh(RID p_body, RID p_mesh) {
 }
 
 RID GodotPhysicsServer3D::soft_body_settings_create(const SoftBody3DSettings *p_settings) {
-	// TODO
-	ERR_FAIL_V_MSG(RID(), "soft_body_settings_create() is not yet implemented for Godot physics");
+	ERR_FAIL_NULL_V(p_settings, RID());
+	GodotSoftBody3DSettings *settings = memnew(GodotSoftBody3DSettings);
+	settings->initialize(*p_settings);
+	RID rid = soft_body_settings_owner.make_rid(settings);
+	return rid;
 }
 
 void GodotPhysicsServer3D::soft_body_set_settings(RID p_body, RID p_settings) {
-	// TODO
-	ERR_FAIL_MSG("soft_body_set_settings() is not yet implemented for Godot physics");
+	GodotSoftBody3D *soft_body = soft_body_owner.get_or_null(p_body);
+	ERR_FAIL_NULL(soft_body);
+
+	if (p_settings.is_null()) {
+		soft_body->set_settings(nullptr);
+	} else {
+		GodotSoftBody3DSettings *soft_body_settings = soft_body_settings_owner.get_or_null(p_settings);
+		ERR_FAIL_NULL(soft_body_settings);
+		soft_body->set_settings(soft_body_settings);
+	}
 }
 
 AABB GodotPhysicsServer3D::soft_body_get_bounds(RID p_body) const {
@@ -1673,7 +1686,10 @@ void GodotPhysicsServer3D::free(RID p_rid) {
 
 		joint_owner.free(p_rid);
 		memdelete(joint);
-
+	} else if (soft_body_settings_owner.owns(p_rid)) {
+		GodotSoftBody3DSettings *soft_body_settings = soft_body_settings_owner.get_or_null(p_rid);
+		soft_body_settings_owner.free(p_rid);
+		memdelete(soft_body_settings);
 	} else {
 		ERR_FAIL_MSG("Invalid ID.");
 	}

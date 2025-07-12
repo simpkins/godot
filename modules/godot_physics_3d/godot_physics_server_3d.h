@@ -38,6 +38,8 @@
 #include "core/templates/rid_owner.h"
 #include "servers/physics_server_3d.h"
 
+class GodotSoftBody3DSettings;
+
 class GodotPhysicsServer3D : public PhysicsServer3D {
 	GDCLASS(GodotPhysicsServer3D, PhysicsServer3D);
 
@@ -60,6 +62,7 @@ class GodotPhysicsServer3D : public PhysicsServer3D {
 	mutable RID_PtrOwner<GodotArea3D, true> area_owner;
 	mutable RID_PtrOwner<GodotBody3D, true> body_owner{ 65536, 1048576 };
 	mutable RID_PtrOwner<GodotSoftBody3D, true> soft_body_owner;
+	mutable RID_PtrOwner<GodotSoftBody3DSettings, true> soft_body_settings_owner;
 	mutable RID_PtrOwner<GodotJoint3D, true> joint_owner;
 
 	//void _clear_query(QuerySW *p_query);

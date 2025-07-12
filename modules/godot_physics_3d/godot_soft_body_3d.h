@@ -42,9 +42,11 @@
 
 class GodotConstraint3D;
 class GodotPhysicsDirectSoftBodyState3D;
+class GodotSoftBody3DSettings;
 
 class GodotSoftBody3D : public GodotCollisionObject3D {
 	RID soft_mesh;
+	bool settings_initialized = false;
 
 	struct Node {
 		Vector3 s; // Source position
@@ -119,6 +121,7 @@ class GodotSoftBody3D : public GodotCollisionObject3D {
 	SelfList<GodotSoftBody3D> direct_state_query_list{ this };
 
 	_FORCE_INLINE_ Vector3 _compute_area_windforce(const GodotArea3D *p_area, const Face *p_face);
+	bool _get_node_index(int p_index, uint32_t &r_index) const;
 
 public:
 	GodotSoftBody3D();
@@ -165,6 +168,7 @@ public:
 	virtual void set_space(GodotSpace3D *p_space) override;
 
 	void set_mesh(RID p_mesh);
+	void set_settings(const GodotSoftBody3DSettings *p_settings);
 
 	void update_rendering_server(PhysicsServer3DRenderingServerHandler *p_rendering_server_handler);
 
@@ -248,6 +252,7 @@ private:
 
 	void apply_forces(const LocalVector<GodotArea3D *> &p_wind_areas);
 
+	bool create_from_settings(const GodotSoftBody3DSettings &p_settings);
 	bool create_from_trimesh(const Vector<int> &p_indices, const Vector<Vector3> &p_vertices);
 	void generate_bending_constraints(int p_distance);
 	void reoptimize_link_order();

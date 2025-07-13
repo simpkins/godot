@@ -1102,10 +1102,13 @@ void GodotSoftBody3D::apply_forces(const LocalVector<GodotArea3D *> &p_wind_area
 
 	// Apply nodal pressure forces.
 	if (pressure_coefficient > CMP_EPSILON) {
-		real_t ivolumetp = 1.0 / Math::abs(volume) * pressure_coefficient;
-		for (Node &node : nodes) {
-			if (node.im > 0) {
-				node.f += node.n * (node.area * ivolumetp);
+		real_t abs_volume = Math::abs(volume);
+		if (abs_volume > CMP_EPSILON) {
+			real_t ivolumetp = 1.0 / abs_volume * pressure_coefficient;
+			for (Node &node : nodes) {
+				if (node.im > 0) {
+					node.f += node.n * (node.area * ivolumetp);
+				}
 			}
 		}
 	}
